@@ -30,8 +30,16 @@ jobs:
       - name: Export YOLO26 to Core ML
         if: steps.model-cache.outputs.cache-hit != 'true'
         run: |
-          pip install -U ultralytics coremltools
-          python scripts/export_yolo26.py
+          set +e
+          { pip install -U ultralytics coremltools && python scripts/export_yolo26.py; } > export.log 2>&1
+          code=$?
+          cat export.log
+          if [ $code -ne 0 ]; then
+            # Post the tail of the log as an annotation (readable without signing in).
+            msg=$(tr -d '\r' < export.log | grep -v '^[[:space:]]*$' | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Model export failed::$msg"
+            exit $code
+          fi
 
       - name: Generate Xcode project
         run: |
@@ -50,7 +58,11 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build | tee xcodebuild.log | grep -E "error:|warning: .*BirdTracker|BUILD (SUCCEEDED|FAILED)" || true
-          test -d build/Build/Products/Release-iphoneos/BirdTracker.app
+          if [ ! -d build/Build/Products/Release-iphoneos/BirdTracker.app ]; then
+            msg=$( (grep -E "error:" xcodebuild.log || tail -40 xcodebuild.log) | sed 's#.*/BirdTracker/BirdTracker/##' | sort -u | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Xcode build failed::$msg"
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
