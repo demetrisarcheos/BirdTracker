@@ -1,0 +1,74 @@
+# Builds an unsigned BirdTracker.ipa on a GitHub-hosted Mac.
+# Download it from the run's "Artifacts" section and install it with Sideloadly (Windows),
+# which signs it with your Apple ID.
+name: Build iOS app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore cached Core ML model
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: BirdTracker/Models/yolo26n.mlpackage
+          key: yolo26n-coreml-${{ hashFiles('scripts/export_yolo26.py') }}
+
+      - uses: actions/setup-python@v5
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Export YOLO26 to Core ML
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install -U ultralytics coremltools
+          python scripts/export_yolo26.py
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project BirdTracker.xcodeproj \
+            -scheme BirdTracker \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*BirdTracker|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/BirdTracker.app
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/BirdTracker.app Payload/
+          zip -qry BirdTracker.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BirdTracker-ipa
+          path: BirdTracker.ipa
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
