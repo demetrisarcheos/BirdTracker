@@ -6,7 +6,7 @@ Model: chriamue/bird-species-classifier (Hugging Face, MIT licence)
 
 Run on macOS or Linux/WSL:
 
-    pip install -U transformers torch coremltools "numpy<2.0"
+    pip install -U transformers "torch==2.7.*" coremltools "numpy<2.0"
     python scripts/export_species.py
 
 Writes BirdTracker/Models/BirdSpecies.mlpackage — a Core ML *classifier*, so Vision returns
@@ -24,7 +24,7 @@ SIZE = 260
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.47853944, 0.4732864, 0.47434163]
 
-model = AutoModelForImageClassification.from_pretrained(REPO, torchscript=True).eval()
+model = AutoModelForImageClassification.from_pretrained(REPO).eval()
 labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
 
 
@@ -38,7 +38,7 @@ class Wrapper(torch.nn.Module):
         self.register_buffer("std", torch.tensor(STD).view(1, 3, 1, 1))
 
     def forward(self, x):
-        logits = self.net((x - self.mean) / self.std)[0]
+        logits = self.net(pixel_values=(x - self.mean) / self.std, return_dict=False)[0]
         return torch.softmax(logits, dim=-1)
 
 

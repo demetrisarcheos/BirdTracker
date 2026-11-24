@@ -38,11 +38,11 @@ jobs:
         if: steps.species-cache.outputs.cache-hit != 'true'
         run: |
           set +e
-          { pip install -U transformers torch coremltools "numpy<2.0" && python scripts/export_species.py; } > species.log 2>&1
+          { pip install -U transformers "torch==2.7.*" coremltools "numpy<2.0" && python scripts/export_species.py; } > species.log 2>&1
           code=$?
           cat species.log
           if [ $code -ne 0 ]; then
-            msg=$(tr -d '\r' < species.log | grep -v '^[[:space:]]*$' | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            msg=$(tr -d '\r' < species.log | grep -v '^[[:space:]]*$' | tail -15 | cut -c1-240 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Species export failed::$msg"
             exit $code
           fi
@@ -56,7 +56,7 @@ jobs:
           cat export.log
           if [ $code -ne 0 ]; then
             # Post the tail of the log as an annotation (readable without signing in).
-            msg=$(tr -d '\r' < export.log | grep -v '^[[:space:]]*$' | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            msg=$(tr -d '\r' < export.log | grep -v '^[[:space:]]*$' | tail -15 | cut -c1-240 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Model export failed::$msg"
             exit $code
           fi
