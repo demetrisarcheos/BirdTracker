@@ -3,7 +3,7 @@ Export Ultralytics YOLO26 to Core ML for the BirdTracker iOS app.
 
 Run on macOS or Linux/WSL (coremltools does not support native Windows):
 
-    pip install -U ultralytics coremltools
+    pip install -U ultralytics coremltools "numpy<2.0"   # newer NumPy breaks coremltools
     python scripts/export_yolo26.py            # yolo26n (fastest, recommended)
     python scripts/export_yolo26.py yolo26s    # more accurate on small/distant birds
 

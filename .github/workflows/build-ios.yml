@@ -31,7 +31,7 @@ jobs:
         if: steps.model-cache.outputs.cache-hit != 'true'
         run: |
           set +e
-          { pip install -U ultralytics coremltools && python scripts/export_yolo26.py; } > export.log 2>&1
+          { pip install -U ultralytics coremltools "numpy<2.0" && python scripts/export_yolo26.py; } > export.log 2>&1
           code=$?
           cat export.log
           if [ $code -ne 0 ]; then

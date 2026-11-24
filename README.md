@@ -17,7 +17,7 @@ on screen.
 
 ```bash
 # 1. Export YOLO26 to Core ML (macOS or Linux/WSL)
-pip install -U ultralytics coremltools
+pip install -U ultralytics coremltools "numpy<2.0"
 python scripts/export_yolo26.py          # writes BirdTracker/Models/yolo26n.mlpackage
 
 # 2. Generate the Xcode project (on the Mac)
