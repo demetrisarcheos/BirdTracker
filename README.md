@@ -82,6 +82,15 @@ From the filtered velocity the app shows:
 Values appear after ~0.4 s of tracking; birds are identified with `#ID` labels and the nearest one
 (yellow box) is shown in the bottom panel.
 
+**5. Species recognition.** About twice a second, a square crop around each bird is classified by
+a second model, [chriamue/bird-species-classifier](https://huggingface.co/chriamue/bird-species-classifier)
+(EfficientNet-B2, 525 species, MIT licence), exported by `scripts/export_species.py` as
+`BirdSpecies.mlpackage`. Guesses are averaged over the last ~8 classifications. The species name shows
+from 30 % confidence. From 60 % the app replaces the preset with that species' typical wingspan
+(`SpeciesWingspan.swift`) and restarts the bird's filter, so the change in scale isn't counted as
+movement. The classifier was trained on close-up photos, so expect it to work best on birds that
+fill a good part of the frame. Turn it off in Settings › Species.
+
 ## Tips and limits
 
 - Keep zoom at 1× (the code locks it) — zoom changes the focal length.
@@ -95,5 +104,6 @@ Values appear after ~0.4 s of tracking; birds are identified with `#ID` labels a
 
 ## Status
 
-The code was written on Windows and **has not yet been compiled or run**; first build on a Mac may
-need minor fixes.
+Built by GitHub Actions (`.github/workflows/build-ios.yml`) on every push to `main`. The unsigned IPA
+is installed with Sideloadly on Windows (no Mac needed). Detection, distance and speed have been tested
+on an iPhone with a bird picture. Real birds and species recognition have not been tested yet.

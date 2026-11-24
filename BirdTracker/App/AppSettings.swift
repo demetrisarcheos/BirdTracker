@@ -4,6 +4,7 @@ enum AppSettings {
     static let birdSizeKey = "birdSizeMeters"
     static let confidenceKey = "confidenceThreshold"
     static let speedUnitKey = "speedUnit"
+    static let identifySpeciesKey = "identifySpecies"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
@@ -13,6 +14,7 @@ enum AppSettings {
             birdSizeKey: BirdSizePreset.pigeon.meters,
             confidenceKey: 0.30,
             speedUnitKey: SpeedUnit.kmh.rawValue,
+            identifySpeciesKey: true,
         ])
     }
 }

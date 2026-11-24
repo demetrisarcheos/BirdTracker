@@ -5,10 +5,12 @@ struct HUDView: View {
     let bird: BirdReadout?
     let unit: SpeedUnit
     let compassAvailable: Bool
+    var speciesEnabled = true
 
     var body: some View {
         VStack(spacing: 10) {
             if let bird {
+                speciesRow(bird)
                 HStack(alignment: .top, spacing: 8) {
                     metric("DISTANCE", Format.distance(bird.distance))
                     metric("SPEED", bird.speed.map { Format.speed($0, unit: unit) } ?? "…")
@@ -42,6 +44,26 @@ struct HUDView: View {
         }
         .padding(14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func speciesRow(_ bird: BirdReadout) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bird.fill").foregroundStyle(.yellow)
+            if let species = bird.species, let conf = bird.speciesConfidence {
+                Text(species).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
+                Text(String(format: "%.0f%%", conf * 100))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(conf >= 0.6 ? .green : .orange)
+            } else {
+                Text(speciesEnabled ? "Identifying…" : "Bird").font(.headline).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(String(format: "wingspan %.2f m · %@", bird.wingspan,
+                        bird.wingspanFromSpecies ? "species" : "preset"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     private func metric(_ title: String, _ value: String) -> some View {

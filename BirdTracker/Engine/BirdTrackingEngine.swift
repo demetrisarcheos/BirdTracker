@@ -12,6 +12,7 @@ final class BirdTrackingEngine: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var compassAvailable = false
     @Published private(set) var cameraDenied = false
+    @Published private(set) var speciesAvailable = true
 
     let camera = CameraManager()
     private let motion = MotionProvider()
@@ -21,6 +22,8 @@ final class BirdTrackingEngine: ObservableObject {
     // Video-queue state
     private var detector: BirdDetector?
     private var detectorFailed = false
+    private var speciesClassifier: SpeciesClassifier?
+    private var speciesLoadAttempted = false
     private var lastFrameTime: Double?
     private var fpsAverage: Double = 0
 
@@ -56,10 +59,17 @@ final class BirdTrackingEngine: ObservableObject {
             }
         }
         guard let detector else { return }
+        if !speciesLoadAttempted {
+            speciesLoadAttempted = true
+            speciesClassifier = SpeciesClassifier()
+            let available = speciesClassifier != nil
+            DispatchQueue.main.async { self.speciesAvailable = available }
+        }
 
         let defaults = UserDefaults.standard
         detector.confidenceThreshold = Float(defaults.double(forKey: AppSettings.confidenceKey))
         let birdSize = max(0.05, defaults.double(forKey: AppSettings.birdSizeKey))
+        let identifySpecies = defaults.bool(forKey: AppSettings.identifySpeciesKey)
 
         let detections = detector.detect(in: buffer)
 
@@ -67,8 +77,16 @@ final class BirdTrackingEngine: ObservableObject {
         let size = CGSize(width: CVPixelBufferGetHeight(buffer), height: CVPixelBufferGetWidth(buffer))
         let geometry = CameraGeometry(imageSize: size, focalPx: focalPx,
                                       deviceToWorld: motion.deviceToWorld ?? matrix_identity_double3x3)
-        let results = tracker.update(detections: detections, time: time,
-                                     geometry: geometry, birdSizeMeters: birdSize)
+        let results = tracker.update(detections: detections, time: time, geometry: geometry,
+                                     presetSizeMeters: birdSize, useSpeciesSize: identifySpecies)
+
+        // Species: classify at most two birds per frame, each about twice a second.
+        if identifySpecies, let classifier = speciesClassifier {
+            for candidate in tracker.classificationCandidates(time: time, imageSize: size, limit: 2) {
+                let guesses = classifier.classify(buffer, rect: candidate.rect, imageSize: size)
+                tracker.addSpeciesGuesses(guesses, toTrack: candidate.id, time: time)
+            }
+        }
 
         if let last = lastFrameTime, time > last {
             let instant = 1 / (time - last)

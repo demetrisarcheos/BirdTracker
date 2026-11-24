@@ -4,6 +4,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.birdSizeKey) private var birdSize = BirdSizePreset.pigeon.meters
     @AppStorage(AppSettings.confidenceKey) private var confidence = 0.30
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
+    @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -34,6 +35,16 @@ struct SettingsView: View {
                     Text("A single camera cannot measure depth directly. Distance is computed from the bird's " +
                          "apparent size, so distance and speed are only as accurate as this value — " +
                          "a 20 % size error gives a 20 % distance and speed error.")
+                }
+
+                Section {
+                    Toggle("Identify species", isOn: $identifySpecies)
+                } header: {
+                    Text("Species")
+                } footer: {
+                    Text("Recognises 525 species and, once confident (60 %+), uses that species' typical " +
+                         "wingspan instead of the preset above. Works best on birds that fill a good " +
+                         "part of the screen.")
                 }
 
                 Section("Detection") {

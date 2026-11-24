@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var engine = BirdTrackingEngine()
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
+    @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
 
@@ -39,7 +40,8 @@ struct ContentView: View {
                         .padding()
                         .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
                 }
-                HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable)
+                HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
+                        speciesEnabled: identifySpecies && engine.speciesAvailable)
             }
             .padding()
         }
@@ -93,7 +95,7 @@ struct BirdBoxView: View {
     }
 
     private var label: String {
-        var parts = ["#\(bird.id)", Format.distance(bird.distance)]
+        var parts = [bird.species ?? "#\(bird.id)", Format.distance(bird.distance)]
         if let s = bird.speed { parts.append(Format.speed(s, unit: unit)) }
         if let b = bird.bearing { parts.append(Format.shortCompass(b)) }
         return parts.joined(separator: " · ")
