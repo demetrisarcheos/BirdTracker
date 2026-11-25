@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
     @AppStorage(AppSettings.cameraSourceKey) private var cameraSourceRaw = CameraSource.phone.rawValue
     @AppStorage(AppSettings.highFrameRateKey) private var highFrameRate = true
+    @AppStorage(AppSettings.centreZoomKey) private var centreZoom = true
     @Environment(\.dismiss) private var dismiss
 
     private var gearSummary: (gun: String, cartridge: String) {
@@ -108,13 +109,16 @@ struct SettingsView: View {
                         Slider(value: $confidence, in: 0.1...0.9, step: 0.05)
                     }
                     Toggle("High frame rate (up to 60 fps)", isOn: $highFrameRate)
+                    Toggle("Centre zoom (longer range at the reticle)", isOn: $centreZoom)
                 } header: {
                     Text("Detection")
                 } footer: {
-                    Text("The phone camera runs at up to 60 fps and the app analyses as many frames as the " +
-                         "phone can (the top bar shows fps and the time per frame). Speed and direction settle " +
-                         "faster, at the cost of battery and heat. It falls back to 30 fps when the phone gets " +
-                         "hot or the light is poor.")
+                    Text("High frame rate: the phone camera runs at up to 60 fps and the app analyses as many " +
+                         "frames as the phone can (the top bar shows fps and the time per frame). Speed and " +
+                         "direction settle faster, at the cost of battery and heat. It falls back to 30 fps when " +
+                         "the phone gets hot or the light is poor.\n\nCentre zoom: the square around the reticle " +
+                         "is also searched at full camera resolution, so birds there are found about 3× farther " +
+                         "away and measured more precisely. It roughly doubles the time per frame.")
                 }
 
                 Section("Units") {

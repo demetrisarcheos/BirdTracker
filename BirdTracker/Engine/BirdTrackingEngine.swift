@@ -16,6 +16,8 @@ final class BirdTrackingEngine: ObservableObject {
     @Published private(set) var fps: Double = 0
     /// Average time the phone needs to analyse one frame (detector + species), milliseconds.
     @Published private(set) var processingMs: Double = 0
+    /// Square analysed at full resolution around the reticle (nil = centre zoom off).
+    @Published private(set) var zoomRect: CGRect?
     @Published private(set) var errorMessage: String?
     @Published private(set) var compassAvailable = false
     @Published private(set) var cameraDenied = false
@@ -206,6 +208,7 @@ final class BirdTrackingEngine: ObservableObject {
         let confidence: Float
         let birdSize: Double
         let identifySpecies: Bool
+        let centreZoom: Bool
         let loadout: Loadout
     }
 
@@ -217,6 +220,7 @@ final class BirdTrackingEngine: ObservableObject {
         return FrameSettings(confidence: Float(defaults.double(forKey: AppSettings.confidenceKey)),
                              birdSize: max(0.05, defaults.double(forKey: AppSettings.birdSizeKey)),
                              identifySpecies: defaults.bool(forKey: AppSettings.identifySpeciesKey),
+                             centreZoom: defaults.bool(forKey: AppSettings.centreZoomKey),
                              loadout: loadout)
     }
 
@@ -245,7 +249,11 @@ final class BirdTrackingEngine: ObservableObject {
 
         let startedAt = CACurrentMediaTime()
         detector.confidenceThreshold = settings.confidence
-        let detections = detector.detect(in: buffer, orientation: orientation)
+        // Centre zoom around the reticle (phone: image centre; gun camera: the barrel point).
+        let zoomCentre: CGPoint? = settings.centreZoom
+            ? (orientation == .right ? CGPoint(x: 0.5, y: 0.5) : AppSettings.boresight) : nil   // .right = phone
+        let (detections, zoom) = detector.detect(in: buffer, orientation: orientation,
+                                                 imageSize: size, zoomCentre: zoomCentre)
         let results = tracker.update(detections: detections, time: time, geometry: geometry,
                                      presetSizeMeters: settings.birdSize,
                                      useSpeciesSize: settings.identifySpecies,
@@ -276,6 +284,7 @@ final class BirdTrackingEngine: ObservableObject {
             self.imageSize = size
             self.fps = fps
             self.processingMs = processing
+            if self.zoomRect != zoom { self.zoomRect = zoom }
         }
     }
 }

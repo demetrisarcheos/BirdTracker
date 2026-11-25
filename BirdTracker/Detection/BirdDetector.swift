@@ -60,10 +60,61 @@ final class BirdDetector {
         return nil
     }
 
+    /// Full-frame detection plus an optional "centre zoom" pass.
+    ///
+    /// The full frame is shrunk to the model's 640-px input, so a distant bird becomes only a few
+    /// pixels. The zoom pass also runs the model on a square crop around `zoomCentre` (the reticle) at
+    /// about the camera's native resolution, which roughly triples the range there. Zoomed detections
+    /// replace full-frame ones of the same bird (sharper box, so a better distance).
+    ///
+    /// - Returns: detections and the zoom square used (normalised, upright image, origin top-left).
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation,
+                imageSize: CGSize, zoomCentre: CGPoint?) -> (detections: [Detection], zoom: CGRect?) {
+        var full = detect(in: pixelBuffer, orientation: orientation)
+        guard let centre = zoomCentre, let roi = zoomRegion(centre: centre, imageSize: imageSize) else {
+            return (full, nil)
+        }
+
+        let edge: CGFloat = 0.01
+        let zoomed = detect(in: pixelBuffer, orientation: orientation, region: roi).compactMap { d -> Detection? in
+            // A bird cut by the crop's edge has a too-small box; the full frame covers it instead.
+            let cut = (d.rect.minX < edge && roi.minX > 0.001) || (d.rect.maxX > 1 - edge && roi.maxX < 0.999)
+                || (d.rect.minY < edge && roi.minY > 0.001) || (d.rect.maxY > 1 - edge && roi.maxY < 0.999)
+            if cut { return nil }
+            return Detection(rect: CGRect(x: roi.minX + d.rect.minX * roi.width,
+                                          y: roi.minY + d.rect.minY * roi.height,
+                                          width: d.rect.width * roi.width,
+                                          height: d.rect.height * roi.height),
+                             confidence: d.confidence)
+        }
+        full.removeAll { f in zoomed.contains { iou($0.rect, f.rect) > 0.3 } }
+        return (zoomed + full, roi)
+    }
+
+    /// Square of about the model's input size in image pixels, centred on `centre` and kept inside
+    /// the image. nil when it would cover most of the picture anyway (no gain).
+    private func zoomRegion(centre: CGPoint, imageSize: CGSize) -> CGRect? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+        let side = min(max(inputSize.width, inputSize.height), imageSize.width, imageSize.height)
+        let w = side / imageSize.width, h = side / imageSize.height
+        guard w * h < 0.6 else { return nil }
+        let x = min(max(centre.x - w / 2, 0), 1 - w)
+        let y = min(max(centre.y - h / 2, 0), 1 - h)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
     /// `pixelBuffer` comes straight from the back camera (landscape); `.right` makes
     /// Vision feed the model the upright portrait image.
     /// Other sources (the gun camera) pass their own orientation.
-    func detect(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .right) -> [Detection] {
+    /// With a `region` (normalised, top-left origin) only that part is analysed and the boxes are
+    /// relative to the region.
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .right,
+                region: CGRect? = nil) -> [Detection] {
+        if let r = region {
+            request.regionOfInterest = CGRect(x: r.minX, y: 1 - r.maxY, width: r.width, height: r.height)
+        } else {
+            request.regionOfInterest = CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         do { try handler.perform([request]) } catch { return [] }
         let results = request.results ?? []

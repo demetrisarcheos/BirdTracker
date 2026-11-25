@@ -65,6 +65,14 @@ struct ContentView: View {
             }
 
             GeometryReader { geo in
+                // Faint square: the centre-zoom area searched at full resolution.
+                if let zoom = engine.zoomRect {
+                    let z = onScreen(zoom, in: geo.size)
+                    Rectangle()
+                        .stroke(.white.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+                        .frame(width: z.width, height: z.height)
+                        .position(x: z.midX, y: z.midY)
+                }
                 ForEach(engine.readouts) { bird in
                     let frame = onScreen(bird.rect, in: geo.size)
                     BirdBoxView(bird: bird, unit: unit, isPrimary: bird.id == primary?.id)

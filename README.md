@@ -139,6 +139,18 @@ the aiming point (can be turned off for a harder game). The gun list and generic
 typical values, and the whole model is a simplified simulation for practice, not a real
 ballistics tool.
 
+### 6b. Frame rate and centre zoom
+
+- **Frame rate:** the phone camera runs at up to 60 fps (30 fps when the phone is hot or the light is
+  poor). The detector skips frames it cannot keep up with. The top bar shows frames analysed per
+  second and the phone's time per frame.
+- **Centre zoom:** the full frame is shrunk to the model's 640-px input, so a far bird becomes a few
+  pixels. A second pass runs the model on a 640-px square around the reticle at native resolution,
+  which gives about 3× the detection range there and a sharper box, so a better distance.
+  - Zoomed detections replace full-frame ones of the same bird.
+  - Boxes cut by the square's edge are ignored, and the full frame covers those birds.
+  - The square is drawn faintly on screen.
+
 ### 7. GoPro on the gun (phone in the pocket)
 
 Settings › Camera › **GoPro on the gun**. The video comes from a GoPro (HERO9 or newer; recommended:
