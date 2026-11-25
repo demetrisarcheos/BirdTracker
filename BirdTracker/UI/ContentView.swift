@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var engine = BirdTrackingEngine()
     @StateObject private var sound = SoundEngine()
+    @StateObject private var haptics = RecoilHaptics()
+    @AppStorage(AppSettings.shootVibrationKey) private var shootVibration = true
     @AppStorage(AppSettings.shotSoundKey) private var shotSound = true
     @AppStorage(AppSettings.aimBeepsKey) private var aimBeeps = true
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
@@ -152,11 +154,8 @@ struct ContentView: View {
                 }
             }
         }
-        switch result.outcome {
-        case .kill:    UINotificationFeedbackGenerator().notificationOccurred(.success)
-        case .wounded: UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        default:       UINotificationFeedbackGenerator().notificationOccurred(.error)
-        }
+        // Recoil: 1 s vibration, only when enabled in Settings.
+        if shootVibration { haptics.playRecoil() }
         withAnimation(.spring(duration: 0.25)) { shotResult = result }
         let id = result.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {

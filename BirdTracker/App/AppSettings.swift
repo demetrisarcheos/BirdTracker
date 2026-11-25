@@ -8,6 +8,7 @@ enum AppSettings {
     static let showLeadPointKey = "showLeadPoint"
     static let shotSoundKey = "shotSound"
     static let aimBeepsKey = "aimBeeps"
+    static let shootVibrationKey = "shootVibration"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
@@ -21,6 +22,7 @@ enum AppSettings {
             showLeadPointKey: true,
             shotSoundKey: true,
             aimBeepsKey: true,
+            shootVibrationKey: true,
         ])
     }
 }

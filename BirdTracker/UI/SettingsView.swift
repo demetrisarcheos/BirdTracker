@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
     @AppStorage(AppSettings.shotSoundKey) private var shotSound = true
     @AppStorage(AppSettings.aimBeepsKey) private var aimBeeps = true
+    @AppStorage(AppSettings.shootVibrationKey) private var shootVibration = true
     @AppStorage(GearStore.gunKey) private var gunJSON = ""
     @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
@@ -74,6 +75,7 @@ struct SettingsView: View {
                     Toggle("Show aiming point", isOn: $showLeadPoint)
                     Toggle("Shot sound", isOn: $shotSound)
                     Toggle("Aiming beeps", isOn: $aimBeeps)
+                    Toggle("Vibrate on shot (1 s)", isOn: $shootVibration)
                 } header: {
                     Text("Hunting simulation")
                 } footer: {
