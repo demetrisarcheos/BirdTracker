@@ -80,9 +80,9 @@ final class BirdTrackingEngine: ObservableObject {
         let results = tracker.update(detections: detections, time: time, geometry: geometry,
                                      presetSizeMeters: birdSize, useSpeciesSize: identifySpecies)
 
-        // Species: classify at most two birds per frame, each about twice a second.
+        // Species: classify at most three birds per frame, each about five times a second.
         if identifySpecies, let classifier = speciesClassifier {
-            for candidate in tracker.classificationCandidates(time: time, imageSize: size, limit: 2) {
+            for candidate in tracker.classificationCandidates(time: time, imageSize: size, limit: 3) {
                 let guesses = classifier.classify(buffer, rect: candidate.rect, imageSize: size)
                 tracker.addSpeciesGuesses(guesses, toTrack: candidate.id, time: time)
             }

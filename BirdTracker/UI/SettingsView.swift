@@ -42,7 +42,8 @@ struct SettingsView: View {
                 } header: {
                     Text("Species")
                 } footer: {
-                    Text("Recognises 525 species and, once confident (60 %+), uses that species' typical " +
+                    Text("Recognises Wood Pigeon, Song Thrush, Chukar Partridge, Eurasian Skylark and Hooded Crow " +
+                         "(anything else shows as Other Bird). Once confident (60 %+) it uses that species' typical " +
                          "wingspan instead of the preset above. Works best on birds that fill a good " +
                          "part of the screen.")
                 }

@@ -15,3 +15,8 @@ Payload/
 xcodebuild.log
 
 .DS_Store
+
+# Training outputs (the trained model in models/ IS committed)
+dataset/
+runs/
+*-cls.pt

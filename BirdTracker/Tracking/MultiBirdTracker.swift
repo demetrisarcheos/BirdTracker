@@ -72,10 +72,10 @@ final class MultiBirdTracker {
     var pixelNoise = 4.0            // px, centre jitter
     var relativeDepthNoise = 0.20   // 20 % frame-to-frame size jitter (wing flapping)
 
-    var classifyInterval = 0.5      // s between species classifications of one bird
-    var minClassifySizePx = 40.0    // smaller birds are too blurry to identify
-    var speciesHistoryLength = 8
-    var showSpeciesAbove: Float = 0.30
+    var classifyInterval = 0.2      // s between species classifications of one bird (~5/s)
+    var minClassifySizePx = 32.0    // smaller birds are too blurry to identify
+    var speciesHistoryLength = 6     // ~1.2 s of guesses averaged
+    var showSpeciesAbove: Float = 0.50  // shown from the very first guess
     var useSpeciesSizeAbove: Float = 0.60
 
     private var tracks: [Track] = []

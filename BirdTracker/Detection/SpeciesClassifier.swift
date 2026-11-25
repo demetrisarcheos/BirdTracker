@@ -3,8 +3,8 @@ import CoreML
 import Vision
 
 /// Identifies the species of a detected bird by classifying a crop around its box.
-/// Model: chriamue/bird-species-classifier (EfficientNet-B2, 525 species), exported by
-/// scripts/export_species.py as BirdSpecies.mlpackage.
+/// Model: YOLO26n-cls trained on 5 Cyprus species + "Other Bird" by training/train_species.py,
+/// committed as models/BirdSpecies.mlpackage and bundled by the iOS build.
 final class SpeciesClassifier {
     struct Guess {
         let label: String        // raw model label, e.g. "ROCK DOVE"

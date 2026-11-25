@@ -82,14 +82,28 @@ From the filtered velocity the app shows:
 Values appear after ~0.4 s of tracking; birds are identified with `#ID` labels and the nearest one
 (yellow box) is shown in the bottom panel.
 
-**5. Species recognition.** About twice a second, a square crop around each bird is classified by
-a second model, [chriamue/bird-species-classifier](https://huggingface.co/chriamue/bird-species-classifier)
-(EfficientNet-B2, 525 species, MIT licence), exported by `scripts/export_species.py` as
-`BirdSpecies.mlpackage`. Guesses are averaged over the last ~8 classifications. The species name shows
-from 30 % confidence. From 60 % the app replaces the preset with that species' typical wingspan
+**5. Species recognition (Cyprus model).** About 5 times a second, a square crop around each bird
+is classified by a small YOLO26n-cls model trained for this app on **Wood Pigeon, Song Thrush, Chukar
+Partridge, Eurasian Skylark and Hooded Crow**, plus **Other Bird** for everything else.
+Guesses are averaged over about the last 1.2 s. The name shows from the first guess at 50 %+. From
+60 % (and at least 2 guesses) the app replaces the preset with that species' typical wingspan
 (`SpeciesWingspan.swift`) and restarts the bird's filter, so the change in scale isn't counted as
-movement. The classifier was trained on close-up photos, so expect it to work best on birds that
-fill a good part of the frame. Turn it off in Settings › Species.
+movement. Turn it off in Settings › Species.
+
+How the model is made (`.github/workflows/train-species.yml`, CPU only, on GitHub):
+1. `training/build_dataset.py` downloads research-grade, Creative-Commons photos from iNaturalist
+   for each species, plus look-alikes (Rock dove, Collared dove, Mistle thrush, Blackbird, Crested
+   lark, Black francolin, Jackdaw, Carrion crow…) and random Cyprus birds for *Other Bird*.
+2. The stock YOLO26 detector finds the bird in every photo, and the crop is made exactly as the app
+   crops it. Wide boxes (wings spread, usually in flight) are preferred, and a third of the training
+   crops get extra blurred/downscaled copies to mimic distant, moving birds.
+3. `training/train_species.py` fine-tunes YOLO26n-cls, reports accuracy, exports Core ML and commits
+   `models/BirdSpecies.mlpackage`. The iOS build then runs automatically and bundles it.
+
+To add or change species, edit `TARGETS` in `build_dataset.py` and the wingspans in
+`SpeciesWingspan.swift`, then push. Photo credits and licences are listed in
+`models/species_photo_credits.csv`. Several photos are CC BY-NC (non-commercial), so check this
+before selling the app.
 
 ## Tips and limits
 

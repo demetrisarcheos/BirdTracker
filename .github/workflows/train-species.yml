@@ -1,0 +1,65 @@
+# Builds the Cyprus species dataset from iNaturalist, trains YOLO26n-cls on CPU, exports it to
+# Core ML and commits models/BirdSpecies.mlpackage. The iOS build workflow then runs
+# automatically and bundles the new model.
+name: Train species model
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: Training epochs
+        default: "30"
+  push:
+    branches: [main]
+    paths: ["training/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: train-species
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (CPU-only PyTorch)
+        run: |
+          bash training/run_logged.sh "Install" bash -c '
+            pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu &&
+            pip install ultralytics coremltools pillow "numpy<2.0"'
+
+      - name: Build dataset from iNaturalist
+        run: bash training/run_logged.sh "Dataset" python training/build_dataset.py
+
+      - name: Train and export
+        run: bash training/run_logged.sh "Training" python training/train_species.py "${{ github.event.inputs.epochs || '30' }}"
+
+      - name: Report accuracy
+        run: |
+          python - <<'EOF'
+          import json
+          r = json.load(open("models/species_report.json"))
+          d = json.load(open("models/species_dataset.json"))
+          per = ", ".join(f"{k} {v}%" for k, v in r["per_class_accuracy_pct"].items())
+          imgs = ", ".join(f"{k} {v['train']}/{v['val']}" for k, v in d.items())
+          print(f"::notice title=Species model::Top-1 {r['top1_accuracy_pct']}% ({r['base_model']}). Per class: {per}. Images train/val: {imgs}")
+          EOF
+
+      - name: Commit model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/
+          top1=$(python -c "import json;print(json.load(open('models/species_report.json'))['top1_accuracy_pct'])")
+          git commit -m "Train Cyprus species model (top-1 ${top1}%)" || exit 0
+          git pull --rebase
+          git push

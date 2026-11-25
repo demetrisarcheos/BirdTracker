@@ -6,14 +6,22 @@ name: Build iOS app
 on:
   push:
     branches: [main]
+    paths-ignore: ["training/**"]
   workflow_dispatch:
+  # Rebuild after the species model has been retrained and committed.
+  workflow_run:
+    workflows: ["Train species model"]
+    types: [completed]
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Restore cached Core ML model
         id: model-cache
@@ -22,29 +30,18 @@ jobs:
           path: BirdTracker/Models/yolo26n.mlpackage
           key: yolo26n-coreml-${{ hashFiles('scripts/export_yolo26.py') }}
 
-      - name: Restore cached species model
-        id: species-cache
-        uses: actions/cache@v4
-        with:
-          path: BirdTracker/Models/BirdSpecies.mlpackage
-          key: species-coreml-${{ hashFiles('scripts/export_species.py') }}
-
       - uses: actions/setup-python@v5
-        if: steps.model-cache.outputs.cache-hit != 'true' || steps.species-cache.outputs.cache-hit != 'true'
+        if: steps.model-cache.outputs.cache-hit != 'true'
         with:
           python-version: "3.12"
 
-      - name: Export species classifier to Core ML
-        if: steps.species-cache.outputs.cache-hit != 'true'
+      - name: Add trained species model
         run: |
-          set +e
-          { pip install -U transformers "torch==2.7.*" coremltools "numpy<2.0" && python scripts/export_species.py; } > species.log 2>&1
-          code=$?
-          cat species.log
-          if [ $code -ne 0 ]; then
-            msg=$(tr -d '\r' < species.log | grep -v '^[[:space:]]*$' | tail -15 | cut -c1-240 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-            echo "::error title=Species export failed::$msg"
-            exit $code
+          if [ -d models/BirdSpecies.mlpackage ]; then
+            cp -R models/BirdSpecies.mlpackage BirdTracker/Models/
+            echo "Species model included"
+          else
+            echo "::warning title=No species model::Run the 'Train species model' workflow; this build has no species recognition."
           fi
 
       - name: Export YOLO26 to Core ML
