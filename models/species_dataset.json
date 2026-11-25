@@ -1,0 +1,26 @@
+{
+  "Wood Pigeon": {
+    "train": 792,
+    "val": 102
+  },
+  "Song Thrush": {
+    "train": 801,
+    "val": 101
+  },
+  "Chukar Partridge": {
+    "train": 817,
+    "val": 102
+  },
+  "Eurasian Skylark": {
+    "train": 824,
+    "val": 101
+  },
+  "Hooded Crow": {
+    "train": 798,
+    "val": 107
+  },
+  "Other Bird": {
+    "train": 2037,
+    "val": 265
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "base_model": "yolo26n-cls.pt",
+  "epochs_requested": 30,
+  "top1_accuracy_pct": 87.0,
+  "per_class_accuracy_pct": {
+    "Chukar Partridge": 94.1,
+    "Eurasian Skylark": 87.1,
+    "Hooded Crow": 85.0,
+    "Other Bird": 86.4,
+    "Song Thrush": 88.1,
+    "Wood Pigeon": 82.4
+  }
+}
