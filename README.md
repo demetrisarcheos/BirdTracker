@@ -105,6 +105,24 @@ To add or change species, edit `TARGETS` in `build_dataset.py` and the wingspans
 `models/species_photo_credits.csv`. Several photos are CC BY-NC (non-commercial), so check this
 before selling the app.
 
+**6. Hunting simulation — lead and the Shoot button.** The reticle is the gun barrel. For the bird in
+the sights (the one whose aiming point is closest to the reticle) the app solves where a shotgun
+shot fired now would have to go (`LeadSolver.swift`):
+
+- **Shot travel time** with drag: pellet speed falls as v0·e^(−x/60 m), v0 = 390 m/s →
+  about 0.03 s at 10 m, 0.10 s at 30 m.
+- **Meeting point** = bird position + bird velocity × travel time (repeated, since the time
+  depends on that distance), raised by the pellet drop ½·g·t².
+- **Hit** if the reticle is within the dense core of the shot pattern (75 % of its radius,
+  which grows with range according to the choke in Settings) plus half the bird.
+
+Example: 30 km/h crossing at 10 m needs about 0.23 m of lead (inside the pattern, so aiming
+at the bird still hits); 50 km/h at 30 m needs about 1.4 m. A perched bird needs none. The
+round button gets more opaque as the reticle nears the aiming point and turns solid red with
+**SHOOT** when a shot would hit; tapping it scores a hit or a miss (with "behind/ahead/high/low").
+A red ring shows the aiming point (can be turned off in Settings for a harder game).
+This is a simplified simulation for practice, not a real ballistics tool.
+
 ## Tips and limits
 
 - Keep zoom at 1× (the code locks it) — zoom changes the focal length.

@@ -26,6 +26,8 @@ struct BirdReadout: Identifiable, Equatable {
     /// Wingspan used for the distance maths, and whether it came from the species.
     let wingspan: Double
     let wingspanFromSpecies: Bool
+    /// Hunting simulation: where to aim and how close the reticle is to it.
+    let lead: LeadSolution?
 }
 
 /// Associates detections across frames, runs a 3D Kalman filter per bird and
@@ -84,7 +86,8 @@ final class MultiBirdTracker {
     func reset() { tracks.removeAll() }
 
     func update(detections: [Detection], time: Double, geometry: CameraGeometry,
-                presetSizeMeters: Double, useSpeciesSize: Bool) -> [BirdReadout] {
+                presetSizeMeters: Double, useSpeciesSize: Bool,
+                patternGrowth: Double = Choke.modified.patternGrowth) -> [BirdReadout] {
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
 
         // Greedy association by centre distance (in pixels), gated by box size.
@@ -122,7 +125,8 @@ final class MultiBirdTracker {
 
         return tracks
             .filter { $0.hits >= 3 && time - $0.lastSeen < 0.25 && $0.filter.isInitialized }
-            .map { readout(for: $0, time: time, presetSize: presetSizeMeters) }
+            .map { readout(for: $0, time: time, presetSize: presetSizeMeters,
+                           geometry: geometry, patternGrowth: patternGrowth) }
     }
 
     // MARK: - Species
@@ -207,7 +211,8 @@ final class MultiBirdTracker {
         track.filter.update(measurement: pointWorld, covariance: rWorld, time: time)
     }
 
-    private func readout(for track: Track, time: Double, presetSize: Double) -> BirdReadout {
+    private func readout(for track: Track, time: Double, presetSize: Double,
+                         geometry: CameraGeometry, patternGrowth: Double) -> BirdReadout {
         let p = track.filter.position
         let v = track.filter.velocity
         let distance = simd_length(p)
@@ -232,6 +237,8 @@ final class MultiBirdTracker {
             speciesConfidence = best.confidence
         }
         let wingspan = track.wingspanInUse ?? presetSize
+        let lead = LeadSolver.solve(position: p, velocity: speed == nil ? nil : v, geometry: geometry,
+                                    wingspan: wingspan, patternGrowth: patternGrowth)
 
         return BirdReadout(id: track.id, rect: track.rect, confidence: track.confidence,
                            distance: distance, heightAboveCamera: p.z,
@@ -239,6 +246,7 @@ final class MultiBirdTracker {
                            verticalSpeed: vertical, radialSpeed: radial,
                            species: species, speciesConfidence: speciesConfidence,
                            wingspan: wingspan,
-                           wingspanFromSpecies: abs(wingspan - presetSize) > 1e-6)
+                           wingspanFromSpecies: abs(wingspan - presetSize) > 1e-6,
+                           lead: lead)
     }
 }

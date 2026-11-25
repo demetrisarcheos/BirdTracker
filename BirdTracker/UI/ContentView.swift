@@ -4,15 +4,26 @@ struct ContentView: View {
     @StateObject private var engine = BirdTrackingEngine()
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
     @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
+    @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var shotResult: ShotResult?
+    @State private var shots = 0
+    @State private var hits = 0
 
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .kmh }
 
-    /// The bird shown in the big panel: the one with the largest box (usually the nearest).
+    /// The bird in the sights: the one whose aiming point is closest to the reticle.
+    /// Falls back to the largest box (usually the nearest) when no aiming point is available.
     private var primary: BirdReadout? {
-        engine.readouts.max { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }
+        if let aimed = engine.readouts.filter({ $0.lead != nil })
+            .min(by: { $0.lead!.hitRatio < $1.lead!.hitRatio }) {
+            return aimed
+        }
+        return engine.readouts.max { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }
     }
+
+    private var onTarget: Bool { primary?.lead?.isHit ?? false }
 
     var body: some View {
         ZStack {
@@ -25,6 +36,12 @@ struct ContentView: View {
                     BirdBoxView(bird: bird, unit: unit, isPrimary: bird.id == primary?.id)
                         .frame(width: frame.width, height: frame.height)
                         .position(x: frame.midX, y: frame.midY)
+                }
+                if showLeadPoint, let bird = primary, let lead = bird.lead, lead.ready {
+                    let box = aspectFillRect(bird.rect, imageSize: engine.imageSize, in: geo.size)
+                    let aim = aspectFillRect(CGRect(origin: lead.aimPoint, size: .zero),
+                                             imageSize: engine.imageSize, in: geo.size).origin
+                    LeadMarkerView(from: CGPoint(x: box.midX, y: box.midY), to: aim, onTarget: lead.isHit)
                 }
             }
             .ignoresSafeArea()
@@ -46,6 +63,17 @@ struct ContentView: View {
                         .padding()
                         .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
                 }
+                if let shotResult {
+                    Text(shotResult.text)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background((shotResult.hit ? Color.green : Color.black).opacity(0.75),
+                                    in: Capsule())
+                        .transition(.scale.combined(with: .opacity))
+                }
+                ShootButton(lead: primary?.lead, action: shoot)
                 HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
                         speciesEnabled: identifySpecies && engine.speciesAvailable)
             }
@@ -58,13 +86,36 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { engine.start() } else if phase == .background { engine.stop() }
         }
+        .onChange(of: onTarget) { _, now in
+            if now { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
+        }
         .sheet(isPresented: $showSettings) { SettingsView() }
+    }
+
+    /// Simulated shot: judged on the latest frame at the moment of the tap.
+    private func shoot() {
+        let result = ShotResult.evaluate(primary)
+        if primary?.lead?.ready == true {
+            shots += 1
+            if result.hit { hits += 1 }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(result.hit ? .success : .error)
+        withAnimation(.spring(duration: 0.25)) { shotResult = result }
+        let id = result.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if shotResult?.id == id { withAnimation { shotResult = nil } }
+        }
     }
 
     private var topBar: some View {
         HStack {
             Label("\(engine.readouts.count)", systemImage: "bird")
                 .font(.headline)
+            if shots > 0 {
+                Label("\(hits)/\(shots)", systemImage: "scope")
+                    .font(.headline.monospacedDigit())
+                    .onLongPressGesture { shots = 0; hits = 0 }
+            }
             Spacer()
             Text(String(format: "%.0f fps", engine.fps))
                 .font(.caption.monospacedDigit())

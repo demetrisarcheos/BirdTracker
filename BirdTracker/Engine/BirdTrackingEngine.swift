@@ -70,6 +70,7 @@ final class BirdTrackingEngine: ObservableObject {
         detector.confidenceThreshold = Float(defaults.double(forKey: AppSettings.confidenceKey))
         let birdSize = max(0.05, defaults.double(forKey: AppSettings.birdSizeKey))
         let identifySpecies = defaults.bool(forKey: AppSettings.identifySpeciesKey)
+        let choke = Choke(rawValue: defaults.string(forKey: AppSettings.chokeKey) ?? "") ?? .modified
 
         let detections = detector.detect(in: buffer)
 
@@ -78,7 +79,8 @@ final class BirdTrackingEngine: ObservableObject {
         let geometry = CameraGeometry(imageSize: size, focalPx: focalPx,
                                       deviceToWorld: motion.deviceToWorld ?? matrix_identity_double3x3)
         let results = tracker.update(detections: detections, time: time, geometry: geometry,
-                                     presetSizeMeters: birdSize, useSpeciesSize: identifySpecies)
+                                     presetSizeMeters: birdSize, useSpeciesSize: identifySpecies,
+                                     patternGrowth: choke.patternGrowth)
 
         // Species: classify at most three birds per frame, each about five times a second.
         if identifySpecies, let classifier = speciesClassifier {

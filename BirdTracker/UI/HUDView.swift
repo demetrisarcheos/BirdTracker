@@ -29,6 +29,14 @@ struct HUDView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if let lead = bird.lead, lead.ready {
+                    Label(String(format: "Lead %.2f m · shot time %.2f s · aim off by %.2f m", lead.leadMeters,
+                                 lead.flightTime, lead.missMeters), systemImage: "scope")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(lead.isHit ? .green : .red)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             } else {
                 Text("Point the camera at a bird")
                     .font(.headline)

@@ -5,6 +5,8 @@ struct SettingsView: View {
     @AppStorage(AppSettings.confidenceKey) private var confidence = 0.30
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
     @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
+    @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
+    @AppStorage(AppSettings.chokeKey) private var chokeRaw = Choke.modified.rawValue
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -46,6 +48,21 @@ struct SettingsView: View {
                          "(anything else shows as Other Bird). Once confident (60 %+) it uses that species' typical " +
                          "wingspan instead of the preset above. Works best on birds that fill a good " +
                          "part of the screen.")
+                }
+
+                Section {
+                    Toggle("Show aiming point", isOn: $showLeadPoint)
+                    Picker("Choke", selection: $chokeRaw) {
+                        ForEach(Choke.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Hunting simulation")
+                } footer: {
+                    Text("The Shoot button fills in as the reticle nears the point where the shot would meet " +
+                         "the bird (its speed, direction, distance, shot travel time and drop are taken into " +
+                         "account) and shows SHOOT when a shot would hit. Tighter chokes need more precise aim. " +
+                         "Turn the aiming point off for a harder game. Long-press the score to reset it.")
                 }
 
                 Section("Detection") {
