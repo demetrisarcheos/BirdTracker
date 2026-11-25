@@ -41,7 +41,8 @@ final class MultiBirdTracker {
         var rect: CGRect
         var confidence: Float
         var hits = 0
-        var sizeHistory: [Double] = []
+        /// Apparent sizes (px) with their weight: zoom boxes count 3×, full-frame boxes 1×.
+        var sizeHistory: [(size: Double, weight: Double)] = []
         var filter = KalmanCV3D()
         var wingspanInUse: Double?
         var lastClassified = -Double.infinity
@@ -71,8 +72,9 @@ final class MultiBirdTracker {
     var maxCoastTime = 0.7          // s without detections before a track is dropped
     var minAgeForMotion = 0.4       // s of tracking before speed/direction are shown
     var sizeWindow = 15             // frames used for the median apparent size
-    var pixelNoise = 4.0            // px, centre jitter
-    var relativeDepthNoise = 0.20   // 20 % frame-to-frame size jitter (wing flapping)
+    var pixelNoise = 4.0            // px, box jitter of a full-frame detection
+    var zoomPrecision = 3.0         // centre-zoom boxes are about this much finer
+    var flapNoise = 0.15            // 15 % frame-to-frame size jitter from wing beats
 
     var classifyInterval = 0.2      // s between species classifications of one bird (~5/s)
     var minClassifySizePx = 32.0    // smaller birds are too blurry to identify
@@ -190,12 +192,13 @@ final class MultiBirdTracker {
         let r = det.rect
         let clipped = r.minX < 0.01 || r.minY < 0.01 || r.maxX > 0.99 || r.maxY > 0.99
         if !clipped || track.sizeHistory.isEmpty {
-            track.sizeHistory.append(sizePx)
+            track.sizeHistory.append((sizePx, det.zoomed ? zoomPrecision : 1))
             if track.sizeHistory.count > sizeWindow { track.sizeHistory.removeFirst() }
         }
 
-        // Median size smooths out wing-beat changes of the bounding box.
-        let medianSize = track.sizeHistory.sorted()[track.sizeHistory.count / 2]
+        // Weighted median size: smooths out wing-beat changes of the box and lets the sharper
+        // centre-zoom boxes outvote rough full-frame ones.
+        let medianSize = Self.weightedMedian(track.sizeHistory)
         guard medianSize > 3 else { return }
 
         // Changing the assumed wingspan rescales every position; restart the filter so the
@@ -215,12 +218,27 @@ final class MultiBirdTracker {
         let pointWorld = toWorld * pointCamera
 
         // Measurement noise: precise across the image, poor along the viewing ray.
-        let lateral = max(0.05, depth * pixelNoise / geometry.focalPx)
-        let along = max(0.2, depth * relativeDepthNoise)
+        // Box jitter is ~4 px for a full-frame detection and ~3× less for a centre-zoom one; along the
+        // ray it adds to the wing-beat size jitter (it dominates for small, distant birds).
+        let boxNoise = det.zoomed ? pixelNoise / zoomPrecision : pixelNoise
+        let lateral = max(0.05, depth * boxNoise / geometry.focalPx)
+        let relativeDepth = (flapNoise * flapNoise + pow(boxNoise / medianSize, 2)).squareRoot()
+        let along = max(0.2, depth * relativeDepth)
         let rCamera = simd_double3x3(diagonal: SIMD3(lateral * lateral, lateral * lateral, along * along))
         let rWorld = toWorld * rCamera * toWorld.transpose
 
         track.filter.update(measurement: pointWorld, covariance: rWorld, time: time)
+    }
+
+    private static func weightedMedian(_ items: [(size: Double, weight: Double)]) -> Double {
+        let sorted = items.sorted { $0.size < $1.size }
+        let half = sorted.reduce(0) { $0 + $1.weight } / 2
+        var running = 0.0
+        for item in sorted {
+            running += item.weight
+            if running >= half { return item.size }
+        }
+        return sorted.last?.size ?? 0
     }
 
     private func readout(for track: Track, time: Double, presetSize: Double,

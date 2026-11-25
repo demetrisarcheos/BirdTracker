@@ -6,6 +6,8 @@ struct Detection {
     /// Normalised (0...1) to the upright portrait image, origin top-left.
     let rect: CGRect
     let confidence: Float
+    /// Found by the centre-zoom pass (about 3× finer than a full-frame box).
+    var zoomed = false
 }
 
 enum DetectorError: LocalizedError {
@@ -85,7 +87,7 @@ final class BirdDetector {
                                           y: roi.minY + d.rect.minY * roi.height,
                                           width: d.rect.width * roi.width,
                                           height: d.rect.height * roi.height),
-                             confidence: d.confidence)
+                             confidence: d.confidence, zoomed: true)
         }
         full.removeAll { f in zoomed.contains { iou($0.rect, f.rect) > 0.3 } }
         return (zoomed + full, roi)
