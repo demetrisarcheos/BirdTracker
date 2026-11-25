@@ -131,7 +131,10 @@ The round button gets more opaque as the reticle nears the aiming point and turn
 **SHOOT** when a shot fired now would kill cleanly ≥ 80 % of the time; it shows **TOO FAR** when
 even a centred shot could not. Tapping it fires a simulated shot: pellet counts are drawn at
 random around the expected values, so the result is a clean kill, a wounded bird, or a miss
-(with "behind / ahead / high / low"). Double guns fire barrel 1, then barrel 2. A red ring shows
+(with "behind / ahead / high / low"), with a shotgun sound. Aiming beeps work like a car parking
+sensor: silent when far off, faster beeps as the reticle closes in, a steady tone at the shooting
+point. Both sounds are synthesised in code and muted when the phone is on silent (ambient audio).
+Double guns fire barrel 1, then barrel 2. A red ring shows
 the aiming point (can be turned off for a harder game). The gun list and generic cartridges are
 typical values, and the whole model is a simplified simulation for practice, not a real
 ballistics tool.

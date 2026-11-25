@@ -6,6 +6,8 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
     @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
     @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
+    @AppStorage(AppSettings.shotSoundKey) private var shotSound = true
+    @AppStorage(AppSettings.aimBeepsKey) private var aimBeeps = true
     @AppStorage(GearStore.gunKey) private var gunJSON = ""
     @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
@@ -70,13 +72,17 @@ struct SettingsView: View {
                         LabeledContent("Cartridge", value: gearSummary.cartridge)
                     }
                     Toggle("Show aiming point", isOn: $showLeadPoint)
+                    Toggle("Shot sound", isOn: $shotSound)
+                    Toggle("Aiming beeps", isOn: $aimBeeps)
                 } header: {
                     Text("Hunting simulation")
                 } footer: {
                     Text("The Shoot button fills in as the reticle nears the point where the shot would meet " +
                          "the bird, using its speed, direction and distance with your cartridge's pellet " +
                          "ballistics (drag, drop, energy) and your choke's pattern. SHOOT means a shot fired now " +
-                         "would kill cleanly at least 80 % of the time. Long-press the score to reset it.")
+                         "would kill cleanly at least 80 % of the time. Aiming beeps work like a parking sensor: " +
+                         "faster as you close in, a steady tone at the shooting point. Sounds are muted when the " +
+                         "phone is on silent. Long-press the score to reset it.")
                 }
 
                 Section("Detection") {

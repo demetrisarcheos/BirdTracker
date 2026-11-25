@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var engine = BirdTrackingEngine()
+    @StateObject private var sound = SoundEngine()
+    @AppStorage(AppSettings.shotSoundKey) private var shotSound = true
+    @AppStorage(AppSettings.aimBeepsKey) private var aimBeeps = true
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
     @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
     @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
@@ -31,6 +34,12 @@ struct ContentView: View {
     }
 
     private var onTarget: Bool { primary?.lead?.isHit ?? false }
+
+    /// Parking-sensor rhythm for the aiming beeps (nil = silent, 0 = continuous).
+    private var beepGap: Double? {
+        guard aimBeeps, !showSettings else { return nil }
+        return SoundEngine.beepGap(for: primary?.lead)
+    }
 
     var body: some View {
         ZStack {
@@ -91,10 +100,18 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = true
             updateLoadout()
             engine.start()
+            sound.start()
         }
+        .onChange(of: beepGap) { _, gap in sound.setBeepGap(gap) }
         .onChange(of: loadoutKey) { _, _ in updateLoadout() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { engine.start() } else if phase == .background { engine.stop() }
+            if phase == .active {
+                engine.start()
+                sound.start()
+            } else if phase == .background {
+                engine.stop()
+                sound.stop()
+            }
         }
         .onChange(of: onTarget) { _, now in
             if now { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
@@ -122,6 +139,7 @@ struct ContentView: View {
         let gun = GearStore.gun(gunJSON)
         let barrelNote = gun.action.isDouble ? "Barrel \(nextBarrel)" : ""
         let result = ShotResult.simulate(primary, barrelNote: barrelNote)
+        if shotSound { sound.playShot() }
         if result.counts {
             shots += 1
             if result.hit { hits += 1 }

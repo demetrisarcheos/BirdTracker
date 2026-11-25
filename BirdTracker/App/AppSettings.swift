@@ -6,6 +6,8 @@ enum AppSettings {
     static let speedUnitKey = "speedUnit"
     static let identifySpeciesKey = "identifySpecies"
     static let showLeadPointKey = "showLeadPoint"
+    static let shotSoundKey = "shotSound"
+    static let aimBeepsKey = "aimBeeps"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
@@ -17,6 +19,8 @@ enum AppSettings {
             speedUnitKey: SpeedUnit.kmh.rawValue,
             identifySpeciesKey: true,
             showLeadPointKey: true,
+            shotSoundKey: true,
+            aimBeepsKey: true,
         ])
     }
 }
