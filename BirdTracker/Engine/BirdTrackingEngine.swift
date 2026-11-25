@@ -26,6 +26,8 @@ final class BirdTrackingEngine: ObservableObject {
     private var speciesLoadAttempted = false
     private var lastFrameTime: Double?
     private var fpsAverage: Double = 0
+    private let loadoutLock = NSLock()
+    private var currentLoadout = Loadout.default
 
     init() {
         camera.onFrame = { [weak self] buffer, time, focal in
@@ -42,6 +44,16 @@ final class BirdTrackingEngine: ObservableObject {
         compassAvailable = motion.hasCompass
         camera.start()
     }
+
+    /// Gun + cartridge + next barrel used for the aiming maths (set from the main thread).
+    func setLoadout(_ loadout: Loadout) {
+        loadoutLock.lock()
+        currentLoadout = loadout
+        loadoutLock.unlock()
+    }
+
+    /// Pauses only the camera (e.g. while Settings may use it to scan a cartridge box).
+    func pauseCamera() { camera.stop() }
 
     func stop() {
         camera.stop()
@@ -70,7 +82,10 @@ final class BirdTrackingEngine: ObservableObject {
         detector.confidenceThreshold = Float(defaults.double(forKey: AppSettings.confidenceKey))
         let birdSize = max(0.05, defaults.double(forKey: AppSettings.birdSizeKey))
         let identifySpecies = defaults.bool(forKey: AppSettings.identifySpeciesKey)
-        let choke = Choke(rawValue: defaults.string(forKey: AppSettings.chokeKey) ?? "") ?? .modified
+
+        loadoutLock.lock()
+        let loadout = currentLoadout
+        loadoutLock.unlock()
 
         let detections = detector.detect(in: buffer)
 
@@ -80,7 +95,7 @@ final class BirdTrackingEngine: ObservableObject {
                                       deviceToWorld: motion.deviceToWorld ?? matrix_identity_double3x3)
         let results = tracker.update(detections: detections, time: time, geometry: geometry,
                                      presetSizeMeters: birdSize, useSpeciesSize: identifySpecies,
-                                     patternGrowth: choke.patternGrowth)
+                                     loadout: loadout)
 
         // Species: classify at most three birds per frame, each about five times a second.
         if identifySpecies, let classifier = speciesClassifier {

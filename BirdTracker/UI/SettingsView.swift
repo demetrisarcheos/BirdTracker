@@ -6,8 +6,16 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speedUnitKey) private var speedUnitRaw = SpeedUnit.kmh.rawValue
     @AppStorage(AppSettings.identifySpeciesKey) private var identifySpecies = true
     @AppStorage(AppSettings.showLeadPointKey) private var showLeadPoint = true
-    @AppStorage(AppSettings.chokeKey) private var chokeRaw = Choke.modified.rawValue
+    @AppStorage(GearStore.gunKey) private var gunJSON = ""
+    @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
+    @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
     @Environment(\.dismiss) private var dismiss
+
+    private var gearSummary: (gun: String, cartridge: String) {
+        let gun = GearStore.gun(gunJSON)
+        let cartridge = GearStore.selected(GearStore.cartridges(cartridgesJSON), id: selectedCartridgeID)
+        return (gun.title, cartridge.shortTitle)
+    }
 
     var body: some View {
         NavigationStack {
@@ -51,18 +59,24 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Show aiming point", isOn: $showLeadPoint)
-                    Picker("Choke", selection: $chokeRaw) {
-                        ForEach(Choke.allCases) { Text($0.title).tag($0.rawValue) }
+                    NavigationLink {
+                        GunSetupView()
+                    } label: {
+                        LabeledContent("Shotgun", value: gearSummary.gun)
                     }
-                    .pickerStyle(.segmented)
+                    NavigationLink {
+                        CartridgeListView()
+                    } label: {
+                        LabeledContent("Cartridge", value: gearSummary.cartridge)
+                    }
+                    Toggle("Show aiming point", isOn: $showLeadPoint)
                 } header: {
                     Text("Hunting simulation")
                 } footer: {
                     Text("The Shoot button fills in as the reticle nears the point where the shot would meet " +
-                         "the bird (its speed, direction, distance, shot travel time and drop are taken into " +
-                         "account) and shows SHOOT when a shot would hit. Tighter chokes need more precise aim. " +
-                         "Turn the aiming point off for a harder game. Long-press the score to reset it.")
+                         "the bird, using its speed, direction and distance with your cartridge's pellet " +
+                         "ballistics (drag, drop, energy) and your choke's pattern. SHOOT means a shot fired now " +
+                         "would kill cleanly at least 80 % of the time. Long-press the score to reset it.")
                 }
 
                 Section("Detection") {

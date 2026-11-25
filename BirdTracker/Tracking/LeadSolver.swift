@@ -1,19 +1,32 @@
-import Foundation
 import CoreGraphics
+import Foundation
 import simd
 
-/// Where to aim so a simulated shotgun shot meets a moving bird.
+/// Where to aim so a simulated shotgun shot meets a moving bird, and what a shot fired now would do.
 struct LeadSolution: Equatable {
     /// Aiming point in the upright image (normalised, origin top-left). The reticle is (0.5, 0.5).
     let aimPoint: CGPoint
     /// Distance between the bird now and the aiming point, metres (includes pellet drop).
     let leadMeters: Double
-    /// Time the shot needs to reach the meeting point, seconds.
+    /// Range to the meeting point (m) and the shot's travel time to it (s).
+    let range: Double
     let flightTime: Double
-    /// Distance by which a shot fired *now* (along the reticle) would miss the meeting point, metres.
+    /// Pellet speed (m/s) and energy (J) on arrival, and the energy this bird needs for a clean kill.
+    let impactSpeed: Double
+    let impactEnergy: Double
+    let neededEnergy: Double
+    /// Diameter of the circle holding 75 % of the pellets at that range, metres.
+    let patternDiameter: Double
+    /// Distance from the pattern centre (reticle) to the meeting point, metres.
     let missMeters: Double
-    /// A shot is a hit when missMeters ≤ this: core of the shot pattern + half the bird.
+    /// Largest miss that still gives ≥ 80 % chance of a clean kill (0 = out of range).
     let toleranceMeters: Double
+    /// Pattern σ at that range (for ranking how well each bird is covered).
+    let sigma: Double
+    /// Expected pellets (if fired now) in the bird's vitals — counting only pellets with enough
+    /// energy — and in its whole body.
+    let expectedVitalHits: Double
+    let expectedBodyHits: Double
     /// Where the shot would pass relative to the aiming point, metres on the target plane
     /// (+right / +up as seen on the screen).
     let shotOffsetRight: Double
@@ -23,45 +36,42 @@ struct LeadSolution: Equatable {
     /// False until the bird's speed is known (first ~0.4 s of tracking).
     let ready: Bool
 
-    /// 0 = dead on, 1 = edge of a hit, larger = further away.
-    var hitRatio: Double { missMeters / max(toleranceMeters, 0.01) }
-    var isHit: Bool { ready && hitRatio <= 1 }
+    var killProbability: Double { KillModel.killProbability(expectedVitalHits) }
+    /// Even a perfectly centred shot would not reliably kill (too few pellets or too little energy).
+    var outOfRange: Bool { toleranceMeters <= 0 }
+    /// 0 = dead on, 1 = edge of the kill zone, larger = further away.
+    var hitRatio: Double { toleranceMeters > 0 ? missMeters / toleranceMeters : .infinity }
+    /// Miss in units of the pattern's σ (used to pick the bird you are aiming at).
+    var missInSigmas: Double { missMeters / max(sigma, 0.01) }
+    /// A shot fired now would kill with ≥ 80 % probability.
+    var isHit: Bool { ready && !outOfRange && missMeters <= toleranceMeters }
 }
 
-/// Simplified shotgun exterior ballistics (simulation only).
+/// Lead and kill-probability maths (simulation).
 ///
-/// • Pellet speed decays exponentially with distance: v(x) = v0 · e^(−x/L)
-///   → flight time t(d) = L/v0 · (e^(d/L) − 1). With v0 = 390 m/s, L = 60 m: ~0.03 s at 10 m,
-///   ~0.10 s at 30 m, ~0.15 s at 40 m — close to real game loads.
-/// • Meeting point = bird position + velocity · t, iterated because t depends on that distance.
-/// • Pellet drop ½ g t² is added by aiming that much higher.
-/// • Pattern radius grows linearly with range (set by the choke); the dense core
-///   (75 % of the radius) plus half the bird's wingspan counts as a hit.
+/// 1. Shot travel time from the cartridge's ballistics table (pellet drag integrated numerically).
+/// 2. Meeting point = bird position + velocity · t, iterated because t depends on that distance;
+///    raised by the pellet drop ½ g t².
+/// 3. The shot leaves along the camera's optical axis (the reticle). Its pellet cloud is treated as
+///    a 2-D Gaussian whose σ grows with range according to the choke.
+/// 4. Expected pellets on the bird = pellet count × pattern density at the bird × presented area;
+///    a clean kill needs ≥ 2 pellets with enough energy in the vitals (Poisson).
 enum LeadSolver {
-    static let muzzleVelocity = 390.0      // m/s
-    static let velocityDecayLength = 60.0  // m
-    static let patternRadiusAtMuzzle = 0.02
-    static let coreFraction = 0.75
     static let stillBelowSpeed = 1.0       // m/s: slower than this counts as perched (no lead)
-
-    static func flightTime(distance d: Double) -> Double {
-        velocityDecayLength / muzzleVelocity * (exp(min(d, 250) / velocityDecayLength) - 1)
-    }
 
     /// - Parameters:
     ///   - position: bird position relative to the phone, world frame, metres.
     ///   - velocity: bird velocity, world frame, m/s; nil while it is not known yet.
-    ///   - patternGrowth: pattern radius growth per metre of range (see `Choke`).
     static func solve(position p: SIMD3<Double>, velocity: SIMD3<Double>?, geometry: CameraGeometry,
-                      wingspan: Double, patternGrowth: Double) -> LeadSolution? {
+                      wingspan: Double, loadout: Loadout) -> LeadSolution? {
         var v = velocity ?? .zero
         if simd_length(v) < stillBelowSpeed { v = .zero }
 
-        var t = flightTime(distance: simd_length(p))
+        var t = loadout.impact(at: simd_length(p)).time
         var meet = p
         for _ in 0..<4 {
             meet = p + v * t
-            t = flightTime(distance: simd_length(meet))
+            t = loadout.impact(at: simd_length(meet)).time
         }
         let drop = 0.5 * 9.81 * t * t
         let aimWorld = meet + SIMD3(0, 0, drop)
@@ -74,11 +84,21 @@ enum LeadSolver {
         let px = geometry.focalPx * a.x / a.z + w / 2
         let py = geometry.focalPx * a.y / a.z + h / 2
 
-        // The shot travels along the optical axis (the reticle). Its closest approach to the
-        // aiming point is the perpendicular distance from that point to the axis.
+        // Closest approach of the pattern centre (optical axis) to the aiming point.
         let miss = hypot(a.x, a.y)
         let range = simd_length(aimWorld)
-        let tolerance = coreFraction * (patternRadiusAtMuzzle + patternGrowth * range) + 0.25 * wingspan
+        let impact = loadout.impact(at: range)
+        let sigma = loadout.sigma(at: range)
+
+        // Pellets per m² at the pattern centre, and how many would land on the bird.
+        let centreDensity = loadout.pelletCount / (2 * .pi * sigma * sigma)
+        let needed = KillModel.minEnergy(wingspan: wingspan)
+        let killing = KillModel.energyFactor(energy: impact.energy, needed: needed)
+        let vitalAtCentre = centreDensity * KillModel.vitalArea(wingspan: wingspan) * killing
+        let falloff = exp(-miss * miss / (2 * sigma * sigma))
+
+        let lStar = KillModel.lambdaForThreshold
+        let tolerance = vitalAtCentre > lStar ? sigma * (2 * log(vitalAtCentre / lStar)).squareRoot() : 0
 
         let vc = worldToCamera * v
         let screen = SIMD2(vc.x, -vc.y)
@@ -86,9 +106,17 @@ enum LeadSolver {
 
         return LeadSolution(aimPoint: CGPoint(x: px / w, y: py / h),
                             leadMeters: simd_length(aimWorld - p),
+                            range: range,
                             flightTime: t,
+                            impactSpeed: impact.speed,
+                            impactEnergy: impact.energy,
+                            neededEnergy: needed,
+                            patternDiameter: loadout.patternDiameter(at: range),
                             missMeters: miss,
                             toleranceMeters: tolerance,
+                            sigma: sigma,
+                            expectedVitalHits: vitalAtCentre * falloff,
+                            expectedBodyHits: centreDensity * KillModel.bodyArea(wingspan: wingspan) * falloff,
                             shotOffsetRight: -a.x,
                             shotOffsetUp: a.y,
                             screenMotion: motion,

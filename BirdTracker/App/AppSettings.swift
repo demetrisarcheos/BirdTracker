@@ -6,7 +6,6 @@ enum AppSettings {
     static let speedUnitKey = "speedUnit"
     static let identifySpeciesKey = "identifySpecies"
     static let showLeadPointKey = "showLeadPoint"
-    static let chokeKey = "choke"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
@@ -18,7 +17,6 @@ enum AppSettings {
             speedUnitKey: SpeedUnit.kmh.rawValue,
             identifySpeciesKey: true,
             showLeadPointKey: true,
-            chokeKey: Choke.modified.rawValue,
         ])
     }
 }
@@ -74,29 +72,6 @@ enum SpeedUnit: String, CaseIterable, Identifiable {
         case .kmh: return metersPerSecond * 3.6
         case .ms:  return metersPerSecond
         case .mph: return metersPerSecond * 2.236_94
-        }
-    }
-}
-
-/// Shotgun choke: how fast the shot pattern spreads (pattern radius per metre of range).
-enum Choke: String, CaseIterable, Identifiable {
-    case cylinder, improved, modified, full
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .cylinder: return "Cyl"
-        case .improved: return "IC"
-        case .modified: return "Mod"
-        case .full:     return "Full"
-        }
-    }
-    var patternGrowth: Double {
-        switch self {
-        case .cylinder: return 0.014
-        case .improved: return 0.012
-        case .modified: return 0.0105
-        case .full:     return 0.009
         }
     }
 }

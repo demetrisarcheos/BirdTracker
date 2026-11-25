@@ -87,7 +87,7 @@ final class MultiBirdTracker {
 
     func update(detections: [Detection], time: Double, geometry: CameraGeometry,
                 presetSizeMeters: Double, useSpeciesSize: Bool,
-                patternGrowth: Double = Choke.modified.patternGrowth) -> [BirdReadout] {
+                loadout: Loadout = .default) -> [BirdReadout] {
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
 
         // Greedy association by centre distance (in pixels), gated by box size.
@@ -126,7 +126,7 @@ final class MultiBirdTracker {
         return tracks
             .filter { $0.hits >= 3 && time - $0.lastSeen < 0.25 && $0.filter.isInitialized }
             .map { readout(for: $0, time: time, presetSize: presetSizeMeters,
-                           geometry: geometry, patternGrowth: patternGrowth) }
+                           geometry: geometry, loadout: loadout) }
     }
 
     // MARK: - Species
@@ -212,7 +212,7 @@ final class MultiBirdTracker {
     }
 
     private func readout(for track: Track, time: Double, presetSize: Double,
-                         geometry: CameraGeometry, patternGrowth: Double) -> BirdReadout {
+                         geometry: CameraGeometry, loadout: Loadout) -> BirdReadout {
         let p = track.filter.position
         let v = track.filter.velocity
         let distance = simd_length(p)
@@ -238,7 +238,7 @@ final class MultiBirdTracker {
         }
         let wingspan = track.wingspanInUse ?? presetSize
         let lead = LeadSolver.solve(position: p, velocity: speed == nil ? nil : v, geometry: geometry,
-                                    wingspan: wingspan, patternGrowth: patternGrowth)
+                                    wingspan: wingspan, loadout: loadout)
 
         return BirdReadout(id: track.id, rect: track.rect, confidence: track.confidence,
                            distance: distance, heightAboveCamera: p.z,

@@ -105,23 +105,36 @@ To add or change species, edit `TARGETS` in `build_dataset.py` and the wingspans
 `models/species_photo_credits.csv`. Several photos are CC BY-NC (non-commercial), so check this
 before selling the app.
 
-**6. Hunting simulation — lead and the Shoot button.** The reticle is the gun barrel. For the bird in
-the sights (the one whose aiming point is closest to the reticle) the app solves where a shotgun
-shot fired now would have to go (`LeadSolver.swift`):
+**6. Hunting simulation — lead, ballistics and the Shoot button.** The reticle is the gun barrel.
+For the bird in the sights (the one whose aiming point is nearest the reticle) the app works out
+where a shot fired now would have to go, and what it would do (`Hunting/Ballistics.swift`,
+`Tracking/LeadSolver.swift`):
 
-- **Shot travel time** with drag: pellet speed falls as v0·e^(−x/60 m), v0 = 390 m/s →
-  about 0.03 s at 10 m, 0.10 s at 30 m.
-- **Meeting point** = bird position + bird velocity × travel time (repeated, since the time
-  depends on that distance), raised by the pellet drop ½·g·t².
-- **Hit** if the reticle is within the dense core of the shot pattern (75 % of its radius,
-  which grows with range according to the choke in Settings) plus half the bird.
+- **Your gear** (Settings › Hunting simulation): shotgun brand/model (fills in typical barrel
+  lengths and how its chokes are marked: stars/notches, letters or mm), barrel length, the choke
+  fitted (both barrels on an over & under), and your cartridges: load (g), shot number / pellet
+  diameter (Italian scale), material (lead, steel, bismuth, tungsten) and speed as printed on the
+  box (V0, V1 or V2.5). Cartridges can be **scanned from the box** with the camera (on-device text
+  recognition reads load, shot size, speed, material and brand; you check them before saving).
+- **Pellet ballistics:** the flight of one pellet is integrated numerically with sphere drag
+  (Cd 0.47 subsonic rising to 0.95 above the speed of sound), from the box speed corrected for
+  barrel length (≈0.5 m/s per cm vs a 76 cm test barrel). This gives travel time, remaining speed
+  and energy at any range (e.g. 32 g No.7½ at 400 m/s: ≈215 m/s and 1.8 J at 30 m).
+- **Meeting point** = bird position + velocity × travel time (iterated), raised by pellet drop.
+- **Pattern:** a Gaussian pellet cloud sized from the choke's standard 40-yard pattern percentage
+  (Cyl 40 % … Full 70 % in a 76 cm circle; steel patterns tighter).
+- **Kill model:** expected pellets on the bird = pellet count × pattern density × the bird's
+  presented area (from its wingspan). A clean kill needs ≥ 2 pellets in the vitals, each with
+  enough energy for that bird size (≈0.35 J thrush … ≈1.25 J crow).
 
-Example: 30 km/h crossing at 10 m needs about 0.23 m of lead (inside the pattern, so aiming
-at the bird still hits); 50 km/h at 30 m needs about 1.4 m. A perched bird needs none. The
-round button gets more opaque as the reticle nears the aiming point and turns solid red with
-**SHOOT** when a shot would hit; tapping it scores a hit or a miss (with "behind/ahead/high/low").
-A red ring shows the aiming point (can be turned off in Settings for a harder game).
-This is a simplified simulation for practice, not a real ballistics tool.
+The round button gets more opaque as the reticle nears the aiming point and turns solid red with
+**SHOOT** when a shot fired now would kill cleanly ≥ 80 % of the time; it shows **TOO FAR** when
+even a centred shot could not. Tapping it fires a simulated shot: pellet counts are drawn at
+random around the expected values, so the result is a clean kill, a wounded bird, or a miss
+(with "behind / ahead / high / low"). Double guns fire barrel 1, then barrel 2. A red ring shows
+the aiming point (can be turned off for a harder game). The gun list and generic cartridges are
+typical values, and the whole model is a simplified simulation for practice, not a real
+ballistics tool.
 
 ## Tips and limits
 

@@ -10,14 +10,21 @@ struct ContentView: View {
     @State private var shotResult: ShotResult?
     @State private var shots = 0
     @State private var hits = 0
+    @AppStorage(GearStore.gunKey) private var gunJSON = ""
+    @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
+    @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
+    /// Double guns fire barrel 1 then barrel 2; back to barrel 1 after a pause.
+    @State private var nextBarrel = 1
+    @State private var loadoutSummary = ""
 
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .kmh }
+    private var loadoutKey: String { "\(gunJSON)|\(cartridgesJSON)|\(selectedCartridgeID)|\(nextBarrel)" }
 
     /// The bird in the sights: the one whose aiming point is closest to the reticle.
     /// Falls back to the largest box (usually the nearest) when no aiming point is available.
     private var primary: BirdReadout? {
         if let aimed = engine.readouts.filter({ $0.lead != nil })
-            .min(by: { $0.lead!.hitRatio < $1.lead!.hitRatio }) {
+            .min(by: { $0.lead!.missInSigmas < $1.lead!.missInSigmas }) {
             return aimed
         }
         return engine.readouts.max { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }
@@ -69,40 +76,72 @@ struct ContentView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background((shotResult.hit ? Color.green : Color.black).opacity(0.75),
-                                    in: Capsule())
+                        .background(resultColor(shotResult).opacity(0.75),
+                                    in: RoundedRectangle(cornerRadius: 18))
                         .transition(.scale.combined(with: .opacity))
                 }
                 ShootButton(lead: primary?.lead, action: shoot)
                 HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
-                        speciesEnabled: identifySpecies && engine.speciesAvailable)
+                        speciesEnabled: identifySpecies && engine.speciesAvailable,
+                        loadoutSummary: loadoutSummary)
             }
             .padding()
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            updateLoadout()
             engine.start()
         }
+        .onChange(of: loadoutKey) { _, _ in updateLoadout() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { engine.start() } else if phase == .background { engine.stop() }
         }
         .onChange(of: onTarget) { _, now in
             if now { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
         }
-        .sheet(isPresented: $showSettings) { SettingsView() }
+        // The camera is paused while Settings is open, so it is free for scanning a cartridge box.
+        .sheet(isPresented: $showSettings, onDismiss: { engine.start() }) { SettingsView() }
+    }
+
+    private func updateLoadout() {
+        let loadout = GearStore.loadout(barrel: nextBarrel)
+        engine.setLoadout(loadout)
+        loadoutSummary = "\(loadout.gun.title) · \(loadout.summary)"
+    }
+
+    private func resultColor(_ result: ShotResult) -> Color {
+        switch result.outcome {
+        case .kill:    return .green
+        case .wounded: return .orange
+        default:       return .black
+        }
     }
 
     /// Simulated shot: judged on the latest frame at the moment of the tap.
     private func shoot() {
-        let result = ShotResult.evaluate(primary)
-        if primary?.lead?.ready == true {
+        let gun = GearStore.gun(gunJSON)
+        let barrelNote = gun.action.isDouble ? "Barrel \(nextBarrel)" : ""
+        let result = ShotResult.simulate(primary, barrelNote: barrelNote)
+        if result.counts {
             shots += 1
             if result.hit { hits += 1 }
+            if gun.action.isDouble {
+                // Second barrel next; after 4 s without shooting, assume the gun was reloaded.
+                nextBarrel = nextBarrel == 1 ? 2 : 1
+                let shotCount = shots
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    if shots == shotCount { nextBarrel = 1 }
+                }
+            }
         }
-        UINotificationFeedbackGenerator().notificationOccurred(result.hit ? .success : .error)
+        switch result.outcome {
+        case .kill:    UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .wounded: UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        default:       UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
         withAnimation(.spring(duration: 0.25)) { shotResult = result }
         let id = result.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             if shotResult?.id == id { withAnimation { shotResult = nil } }
         }
     }
@@ -120,7 +159,10 @@ struct ContentView: View {
             Text(String(format: "%.0f fps", engine.fps))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-            Button { showSettings = true } label: {
+            Button {
+                engine.pauseCamera()
+                showSettings = true
+            } label: {
                 Image(systemName: "slider.horizontal.3").font(.title3)
             }
         }

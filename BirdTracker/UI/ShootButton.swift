@@ -2,15 +2,15 @@ import SwiftUI
 import simd
 
 /// Round red button that fills in as the reticle approaches the correct aiming point
-/// and turns solid with "SHOOT" when a shot fired now would hit.
+/// and turns solid with "SHOOT" when a shot fired now would kill (≥ 80 %).
 struct ShootButton: View {
     let lead: LeadSolution?
     let action: () -> Void
     var diameter: CGFloat = 88
 
-    /// 0.15 when far off (or nothing to shoot at) → 1.0 at the edge of a hit.
+    /// 0.15 when far off, out of range or nothing to shoot at → 1.0 at the edge of the kill zone.
     static func opacity(for lead: LeadSolution?) -> Double {
-        guard let lead, lead.ready else { return 0.15 }
+        guard let lead, lead.ready, !lead.outOfRange else { return 0.15 }
         let r = lead.hitRatio
         if r <= 1 { return 1 }
         // Logarithmic ramp: 2× off ≈ 0.75, 4× ≈ 0.5, 10× or more = 0.15
@@ -29,8 +29,13 @@ struct ShootButton: View {
                     Text("SHOOT")
                         .font(.system(size: 19, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
-                } else if lead?.ready == false {
+                } else if let lead, !lead.ready {
                     ProgressView().tint(.white)          // still measuring speed
+                } else if let lead, lead.outOfRange {
+                    Text("TOO\nFAR")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.8))
                 }
             }
             .frame(width: diameter, height: diameter)
@@ -52,8 +57,11 @@ struct LeadMarkerView: View {
 
     var body: some View {
         ZStack {
-            Path { p in p.move(to: from); p.addLine(to: to) }
-                .stroke(.red.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            Path { p in
+                p.move(to: from)
+                p.addLine(to: to)
+            }
+            .stroke(.red.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             Circle()
                 .stroke(onTarget ? Color.green : Color.red, lineWidth: 2.5)
                 .background(Circle().stroke(.black.opacity(0.5), lineWidth: 4.5))
@@ -65,23 +73,47 @@ struct LeadMarkerView: View {
 
 /// Outcome of a simulated shot, shown briefly on screen.
 struct ShotResult: Identifiable, Equatable {
+    enum Outcome { case kill, wounded, miss, noShot }
+
     let id = UUID()
-    let hit: Bool
+    let outcome: Outcome
     let text: String
 
-    static func evaluate(_ bird: BirdReadout?) -> ShotResult {
+    var hit: Bool { outcome == .kill }
+    /// Counts towards the score (a real shot was fired at a measured bird).
+    var counts: Bool { outcome != .noShot }
+
+    /// Simulates where the pellets went: random pellet counts drawn around the expected values
+    /// for the current aim, so — as in real shooting — a good aim usually, not always, kills.
+    static func simulate(_ bird: BirdReadout?, barrelNote: String) -> ShotResult {
         guard let bird, let lead = bird.lead else {
-            return ShotResult(hit: false, text: "No bird in the sights")
+            return ShotResult(outcome: .noShot, text: "No bird in the sights")
         }
-        let name = bird.species ?? "bird"
+        let name = (bird.species ?? "bird").capitalized
         if !lead.ready {
-            return ShotResult(hit: false, text: "Too early – still measuring the \(name)'s speed")
+            return ShotResult(outcome: .noShot, text: "Too early – still measuring the bird's speed")
         }
-        if lead.isHit {
-            return ShotResult(hit: true, text: String(format: "HIT! %@ at %.0f m · lead %.2f m", name.capitalized,
-                                                      bird.distance, lead.leadMeters))
+
+        let vital = KillModel.poisson(lead.expectedVitalHits)
+        let body = max(vital, KillModel.poisson(lead.expectedBodyHits))
+        let prefix = barrelNote.isEmpty ? "" : barrelNote + " · "
+
+        if vital >= 2 {
+            return ShotResult(outcome: .kill, text: String(
+                format: "%@HIT! %@ at %.0f m – %d pellets in the vitals (%.1f J each)",
+                prefix, name, lead.range, vital, lead.impactEnergy))
         }
-        return ShotResult(hit: false, text: String(format: "MISS – %.2f m %@", lead.missMeters, missDirection(lead)))
+        if body >= 1 {
+            let weak = lead.impactEnergy < lead.neededEnergy ? ", pellets too weak at this range" : ""
+            return ShotResult(outcome: .wounded, text: String(
+                format: "%@WOUNDED – %d pellet%@ hit, not a clean kill%@",
+                prefix, body, body == 1 ? "" : "s", weak))
+        }
+        if lead.outOfRange && lead.hitRatio.isInfinite && lead.missMeters < lead.patternDiameter / 2 {
+            return ShotResult(outcome: .miss, text: prefix + "MISS – too far for this cartridge and choke")
+        }
+        return ShotResult(outcome: .miss, text: String(format: "%@MISS – %.2f m %@", prefix, lead.missMeters,
+                                                       missDirection(lead)))
     }
 
     /// "behind", "ahead", "high", "low", "left" or "right" — whichever dominates.

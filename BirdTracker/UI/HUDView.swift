@@ -6,6 +6,7 @@ struct HUDView: View {
     let unit: SpeedUnit
     let compassAvailable: Bool
     var speciesEnabled = true
+    var loadoutSummary = ""
 
     var body: some View {
         VStack(spacing: 10) {
@@ -30,12 +31,19 @@ struct HUDView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 if let lead = bird.lead, lead.ready {
-                    Label(String(format: "Lead %.2f m · shot time %.2f s · aim off by %.2f m", lead.leadMeters,
-                                 lead.flightTime, lead.missMeters), systemImage: "scope")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(lead.isHit ? .green : .red)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                    VStack(spacing: 3) {
+                        Label(String(format: "Lead %.2f m · aim off %.2f m · kill chance %.0f%%",
+                                     lead.leadMeters, lead.missMeters, lead.killProbability * 100),
+                              systemImage: "scope")
+                        Text(String(format: "Shot %.2f s · %.0f m/s · %.1f J/pellet (needs %.1f) · pattern Ø %.2f m",
+                                    lead.flightTime, lead.impactSpeed, lead.impactEnergy, lead.neededEnergy,
+                                    lead.patternDiameter))
+                            .font(.caption2.monospacedDigit())
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(lead.isHit ? .green : (lead.outOfRange ? .orange : .red))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                 }
             } else {
                 Text("Point the camera at a bird")
@@ -43,6 +51,13 @@ struct HUDView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
+            }
+            if !loadoutSummary.isEmpty {
+                Text(loadoutSummary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             if !compassAvailable {
                 Text("Compass unavailable — directions are relative to the start position.")
