@@ -30,6 +30,12 @@ struct ContentView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
+            // Aiming point: centre of the full screen (same as the centre of the camera image).
+            ReticleView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
             VStack(spacing: 12) {
                 topBar
                 Spacer()
