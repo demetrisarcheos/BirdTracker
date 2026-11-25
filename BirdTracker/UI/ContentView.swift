@@ -207,7 +207,8 @@ struct ContentView: View {
                     Image(systemName: "lock").font(.title3)
                 }
             }
-            Text(String(format: "%.0f fps", engine.fps))
+            // Frames analysed per second · phone time per frame (under ~16 ms = it could do 60 fps).
+            Text(String(format: "%.0f fps · %.0f ms", engine.fps, engine.processingMs))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
             Button {

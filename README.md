@@ -139,6 +139,33 @@ the aiming point (can be turned off for a harder game). The gun list and generic
 typical values, and the whole model is a simplified simulation for practice, not a real
 ballistics tool.
 
+### 7. GoPro on the gun (phone in the pocket)
+
+Settings › Camera › **GoPro on the gun**. The video comes from a GoPro (HERO9 or newer; recommended:
+HERO13 Black, Linear lens) on a barrel mount, and the gun's movement comes from a **WitMotion
+WT901BLECL** Bluetooth motion sensor strapped to the gun with its X arrow towards the muzzle. The
+phone's own sensors cannot be used because the phone no longer moves with the camera.
+
+- **Video:** the phone joins the GoPro's Wi-Fi. The app starts the Open GoPro preview stream (HTTP on
+  10.5.5.9:8080) and receives H.264 in MPEG-TS over UDP port 8554, decoded with VideoToolbox.
+  The button "Switch on GoPro Wi-Fi" uses the GoPro's Bluetooth link and shows the network name and
+  password.
+- **Delay:** Wi-Fi video arrives about 200–300 ms late. Each frame is given the gun's orientation
+  at the moment it was taken (from the sensor's 100 Hz history), and birds are moved forward by the
+  delay for the lead, using where the barrel points now. "Measure delay" flashes the phone screen in
+  front of the GoPro and times how long the flash takes to show up in the video.
+- **Calibration:**
+  - Field of view: tap the two edges of an object of known width at a known distance.
+  - Barrel alignment: mark where the barrel points in the picture; the reticle moves there.
+  - Sensor axes: checked automatically against gravity and the gyro while you tilt and swing the gun.
+  - North: point the gun north and tap the button.
+- **Real shots:** a recoil spike above the threshold (default 6 g) counts as a shot. It is judged
+  with the barrel's orientation just before the recoil. No fake bang or vibration is played.
+- **Pocket lock** (lock icon): a black screen that ignores touches. Hold for 2 s to unlock. Use
+  earphones for the aiming beeps, and keep the app open with silent mode off.
+
+None of this has been tested with real hardware yet.
+
 ## Tips and limits
 
 - Keep zoom at 1× (the code locks it) — zoom changes the focal length.

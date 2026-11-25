@@ -17,6 +17,50 @@ final class CameraManager: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "bird.camera.video", qos: .userInitiated)
     private var configured = false
     private var horizontalFOVDegrees: Double = 65
+    private var device: AVCaptureDevice?
+    private var thermalObserver: NSObjectProtocol?
+
+    override init() {
+        super.init()
+        // Drop back to 30 fps when the phone gets hot.
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.sessionQueue.async { self?.applyFrameRate() }
+        }
+    }
+
+    deinit {
+        if let thermalObserver { NotificationCenter.default.removeObserver(thermalObserver) }
+    }
+
+    /// Up to 60 fps when enabled and the phone is not hot. The detector skips frames it cannot keep up
+    /// with, so the app always processes as many as the phone can. In poor light the camera may slow
+    /// down to 30 fps to keep exposures long enough.
+    private func applyFrameRate() {
+        guard let device else { return }
+        let hot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+        let want = UserDefaults.standard.bool(forKey: AppSettings.highFrameRateKey) && !hot ? 60.0 : 30.0
+        let maxRate = device.activeFormat.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 30
+        let rate = min(want, maxRate)
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(rate.rounded()))
+        device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
+        device.unlockForConfiguration()
+    }
+
+    /// 1920×1080 8-bit format that can run at 60 fps; the widest field of view (full sensor width) wins.
+    private static func highFrameRateFormat(for device: AVCaptureDevice) -> AVCaptureDevice.Format? {
+        let subtypes: Set<FourCharCode> = [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                                           kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
+        return device.formats
+            .filter { format in
+                let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+                return d.width == 1920 && d.height == 1080
+                    && subtypes.contains(CMFormatDescriptionGetMediaSubType(format.formatDescription))
+                    && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 59.9 }
+            }
+            .max { $0.videoFieldOfView < $1.videoFieldOfView }
+    }
 
     func start() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -46,6 +90,7 @@ final class CameraManager: NSObject, ObservableObject {
                 self.configured = true
             }
             if !self.session.isRunning { self.session.startRunning() }
+            self.applyFrameRate()            // picks up a changed setting
         }
     }
 
@@ -59,6 +104,12 @@ final class CameraManager: NSObject, ObservableObject {
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input) else { return }
         session.addInput(input)
+        self.device = device
+
+        if let format = Self.highFrameRateFormat(for: device), (try? device.lockForConfiguration()) != nil {
+            device.activeFormat = format
+            device.unlockForConfiguration()
+        }
 
         // Fallback focal length if per-frame intrinsics are not delivered.
         horizontalFOVDegrees = Double(device.activeFormat.videoFieldOfView)

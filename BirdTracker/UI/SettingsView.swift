@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
     @AppStorage(AppSettings.cameraSourceKey) private var cameraSourceRaw = CameraSource.phone.rawValue
+    @AppStorage(AppSettings.highFrameRateKey) private var highFrameRate = true
     @Environment(\.dismiss) private var dismiss
 
     private var gearSummary: (gun: String, cartridge: String) {
@@ -101,11 +102,19 @@ struct SettingsView: View {
                          "phone is on silent. Long-press the score to reset it.")
                 }
 
-                Section("Detection") {
+                Section {
                     VStack(alignment: .leading) {
                         Text(String(format: "Confidence threshold: %.0f %%", confidence * 100))
                         Slider(value: $confidence, in: 0.1...0.9, step: 0.05)
                     }
+                    Toggle("High frame rate (up to 60 fps)", isOn: $highFrameRate)
+                } header: {
+                    Text("Detection")
+                } footer: {
+                    Text("The phone camera runs at up to 60 fps and the app analyses as many frames as the " +
+                         "phone can (the top bar shows fps and the time per frame). Speed and direction settle " +
+                         "faster, at the cost of battery and heat. It falls back to 30 fps when the phone gets " +
+                         "hot or the light is poor.")
                 }
 
                 Section("Units") {

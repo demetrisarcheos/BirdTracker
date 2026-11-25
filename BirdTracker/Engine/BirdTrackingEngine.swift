@@ -14,6 +14,8 @@ final class BirdTrackingEngine: ObservableObject {
     @Published private(set) var readouts: [BirdReadout] = []
     @Published private(set) var imageSize = CGSize(width: 1080, height: 1920)
     @Published private(set) var fps: Double = 0
+    /// Average time the phone needs to analyse one frame (detector + species), milliseconds.
+    @Published private(set) var processingMs: Double = 0
     @Published private(set) var errorMessage: String?
     @Published private(set) var compassAvailable = false
     @Published private(set) var cameraDenied = false
@@ -41,6 +43,7 @@ final class BirdTrackingEngine: ObservableObject {
     private var speciesLoadAttempted = false
     private var lastFrameTime: Double?
     private var fpsAverage: Double = 0
+    private var processingAverage: Double = 0
     private let loadoutLock = NSLock()
     private var currentLoadout = Loadout.default
 
@@ -240,6 +243,7 @@ final class BirdTrackingEngine: ObservableObject {
             DispatchQueue.main.async { self.speciesAvailable = available }
         }
 
+        let startedAt = CACurrentMediaTime()
         detector.confidenceThreshold = settings.confidence
         let detections = detector.detect(in: buffer, orientation: orientation)
         let results = tracker.update(detections: detections, time: time, geometry: geometry,
@@ -263,11 +267,15 @@ final class BirdTrackingEngine: ObservableObject {
         }
         lastFrameTime = time
         let fps = fpsAverage
+        let busy = (CACurrentMediaTime() - startedAt) * 1000
+        processingAverage = processingAverage == 0 ? busy : processingAverage * 0.9 + busy * 0.1
+        let processing = processingAverage
 
         DispatchQueue.main.async {
             self.readouts = results
             self.imageSize = size
             self.fps = fps
+            self.processingMs = processing
         }
     }
 }

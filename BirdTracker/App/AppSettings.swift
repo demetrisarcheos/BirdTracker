@@ -9,6 +9,7 @@ enum AppSettings {
     static let shotSoundKey = "shotSound"
     static let aimBeepsKey = "aimBeeps"
     static let shootVibrationKey = "shootVibration"
+    static let highFrameRateKey = "highFrameRate"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
@@ -23,6 +24,7 @@ enum AppSettings {
             shotSoundKey: true,
             aimBeepsKey: true,
             shootVibrationKey: true,
+            highFrameRateKey: true,
         ]
         defaults.merge(gunCameraDefaults) { current, _ in current }
         UserDefaults.standard.register(defaults: defaults)
