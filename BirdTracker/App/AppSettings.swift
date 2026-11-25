@@ -14,7 +14,7 @@ enum AppSettings {
     static let modelName = "yolo26n"
 
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
+        var defaults: [String: Any] = [
             birdSizeKey: BirdSizePreset.pigeon.meters,
             confidenceKey: 0.30,
             speedUnitKey: SpeedUnit.kmh.rawValue,
@@ -23,7 +23,9 @@ enum AppSettings {
             shotSoundKey: true,
             aimBeepsKey: true,
             shootVibrationKey: true,
-        ])
+        ]
+        defaults.merge(gunCameraDefaults) { current, _ in current }
+        UserDefaults.standard.register(defaults: defaults)
     }
 }
 

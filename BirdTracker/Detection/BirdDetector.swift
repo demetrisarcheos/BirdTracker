@@ -62,8 +62,9 @@ final class BirdDetector {
 
     /// `pixelBuffer` comes straight from the back camera (landscape); `.right` makes
     /// Vision feed the model the upright portrait image.
-    func detect(in pixelBuffer: CVPixelBuffer) -> [Detection] {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+    /// Other sources (the gun camera) pass their own orientation.
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .right) -> [Detection] {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         do { try handler.perform([request]) } catch { return [] }
         let results = request.results ?? []
 

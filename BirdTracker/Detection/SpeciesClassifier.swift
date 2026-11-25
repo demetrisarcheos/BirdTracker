@@ -27,7 +27,8 @@ final class SpeciesClassifier {
     /// - Parameters:
     ///   - rect: normalised bird box in the upright image, origin top-left.
     /// - Returns: the top guesses, best first.
-    func classify(_ pixelBuffer: CVPixelBuffer, rect: CGRect, imageSize: CGSize, top: Int = 10) -> [Guess] {
+    func classify(_ pixelBuffer: CVPixelBuffer, rect: CGRect, imageSize: CGSize, top: Int = 10,
+                  orientation: CGImagePropertyOrientation = .right) -> [Guess] {
         // Square crop with some margin: the model was trained on roughly centred, square photos.
         let w = Double(imageSize.width), h = Double(imageSize.height)
         let side = max(Double(rect.width) * w, Double(rect.height) * h) * 1.3
@@ -39,7 +40,7 @@ final class SpeciesClassifier {
         // Vision's region of interest uses a bottom-left origin.
         request.regionOfInterest = CGRect(x: crop.minX, y: 1 - crop.maxY, width: crop.width, height: crop.height)
 
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         do { try handler.perform([request]) } catch { return [] }
         let results = (request.results as? [VNClassificationObservation]) ?? []
         return results.prefix(top).map { Guess(label: $0.identifier, confidence: $0.confidence) }

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(GearStore.gunKey) private var gunJSON = ""
     @AppStorage(GearStore.cartridgesKey) private var cartridgesJSON = ""
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
+    @AppStorage(AppSettings.cameraSourceKey) private var cameraSourceRaw = CameraSource.phone.rawValue
     @Environment(\.dismiss) private var dismiss
 
     private var gearSummary: (gun: String, cartridge: String) {
@@ -23,6 +24,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("Camera", selection: $cameraSourceRaw) {
+                        ForEach(CameraSource.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    NavigationLink("GoPro & gun sensor setup") { GunCameraSetupView() }
+                } header: {
+                    Text("Camera")
+                } footer: {
+                    Text("GoPro on the gun: the phone can stay in your pocket. Video comes from a GoPro over " +
+                         "Wi-Fi and the gun's movement from a WitMotion Bluetooth sensor on the gun, because the " +
+                         "phone's own sensors no longer move with the camera. Takes effect when you close Settings.")
+                }
+
                 Section {
                     ForEach(BirdSizePreset.allCases) { preset in
                         Button {

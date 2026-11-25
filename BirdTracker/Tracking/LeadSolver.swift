@@ -80,12 +80,18 @@ enum LeadSolver {
         let a = worldToCamera * aimWorld          // camera: x right, y down, z forward
         guard a.z > 0.5 else { return nil }       // behind / beside the phone
 
+        // The shot travels along the barrel axis (the optical axis for the phone camera).
+        let barrel = geometry.barrelAxis
+        let along = simd_dot(a, barrel)
+        guard along > 0.5 else { return nil }
+        let perp = a - along * barrel
+
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
         let px = geometry.focalPx * a.x / a.z + w / 2
         let py = geometry.focalPx * a.y / a.z + h / 2
 
-        // Closest approach of the pattern centre (optical axis) to the aiming point.
-        let miss = hypot(a.x, a.y)
+        // Closest approach of the pattern centre (barrel axis) to the aiming point.
+        let miss = simd_length(perp)
         let range = simd_length(aimWorld)
         let impact = loadout.impact(at: range)
         let sigma = loadout.sigma(at: range)
@@ -117,8 +123,8 @@ enum LeadSolver {
                             sigma: sigma,
                             expectedVitalHits: vitalAtCentre * falloff,
                             expectedBodyHits: centreDensity * KillModel.bodyArea(wingspan: wingspan) * falloff,
-                            shotOffsetRight: -a.x,
-                            shotOffsetUp: a.y,
+                            shotOffsetRight: -perp.x,
+                            shotOffsetUp: perp.y,
                             screenMotion: motion,
                             ready: velocity != nil)
     }

@@ -21,18 +21,29 @@ struct ContentView: View {
     /// Double guns fire barrel 1 then barrel 2; back to barrel 1 after a pause.
     @State private var nextBarrel = 1
     @State private var loadoutSummary = ""
+    @AppStorage(AppSettings.cameraUpsideDownKey) private var cameraUpsideDown = false
+    @State private var pocketLocked = false
+
+    private var gunMode: Bool { engine.source == .gunCamera }
+
+    /// Phone preview fills the screen; the landscape GoPro picture is letterboxed.
+    private func onScreen(_ rect: CGRect, in size: CGSize) -> CGRect {
+        imageRect(rect, imageSize: engine.imageSize, in: size, fill: !gunMode)
+    }
 
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .kmh }
     private var loadoutKey: String { "\(gunJSON)|\(cartridgesJSON)|\(selectedCartridgeID)|\(nextBarrel)" }
 
     /// The bird in the sights: the one whose aiming point is closest to the reticle.
     /// Falls back to the largest box (usually the nearest) when no aiming point is available.
-    private var primary: BirdReadout? {
-        if let aimed = engine.readouts.filter({ $0.lead != nil })
+    private var primary: BirdReadout? { Self.primaryBird(engine.readouts) }
+
+    static func primaryBird(_ readouts: [BirdReadout]) -> BirdReadout? {
+        if let aimed = readouts.filter({ $0.lead != nil })
             .min(by: { $0.lead!.missInSigmas < $1.lead!.missInSigmas }) {
             return aimed
         }
-        return engine.readouts.max { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }
+        return readouts.max { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }
     }
 
     private var onTarget: Bool { primary?.lead?.isHit ?? false }
@@ -45,36 +56,41 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            CameraPreview(session: engine.camera.session)
-                .ignoresSafeArea()
+            if gunMode {
+                GoProVideoView(camera: engine.gopro, upsideDown: cameraUpsideDown)
+                    .ignoresSafeArea()
+            } else {
+                CameraPreview(session: engine.camera.session)
+                    .ignoresSafeArea()
+            }
 
             GeometryReader { geo in
                 ForEach(engine.readouts) { bird in
-                    let frame = aspectFillRect(bird.rect, imageSize: engine.imageSize, in: geo.size)
+                    let frame = onScreen(bird.rect, in: geo.size)
                     BirdBoxView(bird: bird, unit: unit, isPrimary: bird.id == primary?.id)
                         .frame(width: frame.width, height: frame.height)
                         .position(x: frame.midX, y: frame.midY)
                 }
                 if showLeadPoint, let bird = primary, let lead = bird.lead, lead.ready {
-                    let box = aspectFillRect(bird.rect, imageSize: engine.imageSize, in: geo.size)
-                    let aim = aspectFillRect(CGRect(origin: lead.aimPoint, size: .zero),
-                                             imageSize: engine.imageSize, in: geo.size).origin
+                    let box = onScreen(bird.rect, in: geo.size)
+                    let aim = onScreen(CGRect(origin: lead.aimPoint, size: .zero), in: geo.size).origin
                     LeadMarkerView(from: CGPoint(x: box.midX, y: box.midY), to: aim, onTarget: lead.isHit)
                 }
+                // Aiming point: where the shot goes. Phone: the screen centre (= image centre, the optical
+                // axis). Gun camera: the barrel point found in the alignment step.
+                ReticleView()
+                    .position(onScreen(CGRect(origin: engine.boresight, size: .zero), in: geo.size).origin)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
-            // Aiming point: centre of the full screen (same as the centre of the camera image).
-            ReticleView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-
             VStack(spacing: 12) {
                 topBar
+                if gunMode {
+                    GunSourceBanner(gopro: engine.gopro, sensor: engine.gunSensor)
+                }
                 Spacer()
-                if let message = engine.errorMessage ?? (engine.cameraDenied
+                if let message = engine.errorMessage ?? (engine.cameraDenied && !gunMode
                     ? "Camera access is off. Enable it in Settings › Bird Tracker." : nil) {
                     Text(message)
                         .font(.callout)
@@ -91,13 +107,18 @@ struct ContentView: View {
                                     in: RoundedRectangle(cornerRadius: 18))
                         .transition(.scale.combined(with: .opacity))
                 }
-                ShootButton(lead: primary?.lead, action: shoot)
+                ShootButton(lead: primary?.lead, action: { shoot() })
                 HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
                         speciesEnabled: identifySpecies && engine.speciesAvailable,
                         loadoutSummary: loadoutSummary)
             }
             .padding()
+
+            if pocketLocked {
+                PocketLockView { pocketLocked = false }
+            }
         }
+        .onReceive(engine.realShot) { readouts in shoot(realShot: readouts) }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             updateLoadout()
@@ -119,7 +140,9 @@ struct ContentView: View {
             if now { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
         }
         // The camera is paused while Settings is open, so it is free for scanning a cartridge box.
-        .sheet(isPresented: $showSettings, onDismiss: { engine.start() }) { SettingsView() }
+        .sheet(isPresented: $showSettings, onDismiss: { engine.start() }) {
+            SettingsView().environmentObject(engine)
+        }
     }
 
     private func updateLoadout() {
@@ -136,12 +159,16 @@ struct ContentView: View {
         }
     }
 
-    /// Simulated shot: judged on the latest frame at the moment of the tap.
-    private func shoot() {
+    /// Simulated shot (Shoot button): judged on the latest frame at the moment of the tap.
+    /// Real shot (recoil from the gun sensor): judged on the birds and barrel at the moment of firing;
+    /// no fake bang or vibration.
+    private func shoot(realShot readouts: [BirdReadout]? = nil) {
         let gun = GearStore.gun(gunJSON)
         let barrelNote = gun.action.isDouble ? "Barrel \(nextBarrel)" : ""
-        let result = ShotResult.simulate(primary, barrelNote: barrelNote)
-        if shotSound { sound.playShot() }
+        let bird = readouts.map { Self.primaryBird($0) } ?? primary
+        let result = ShotResult.simulate(bird, barrelNote: barrelNote)
+        let real = readouts != nil
+        if shotSound && !real { sound.playShot() }
         if result.counts {
             shots += 1
             if result.hit { hits += 1 }
@@ -155,7 +182,7 @@ struct ContentView: View {
             }
         }
         // Recoil: 1 s vibration, only when enabled in Settings.
-        if shootVibration { haptics.playRecoil() }
+        if shootVibration && !real { haptics.playRecoil() }
         withAnimation(.spring(duration: 0.25)) { shotResult = result }
         let id = result.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -173,6 +200,13 @@ struct ContentView: View {
                     .onLongPressGesture { shots = 0; hits = 0 }
             }
             Spacer()
+            if gunMode {
+                Button {
+                    pocketLocked = true
+                } label: {
+                    Image(systemName: "lock").font(.title3)
+                }
+            }
             Text(String(format: "%.0f fps", engine.fps))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)

@@ -87,7 +87,8 @@ final class MultiBirdTracker {
 
     func update(detections: [Detection], time: Double, geometry: CameraGeometry,
                 presetSizeMeters: Double, useSpeciesSize: Bool,
-                loadout: Loadout = .default) -> [BirdReadout] {
+                loadout: Loadout = .default,
+                leadGeometry: CameraGeometry? = nil, leadAhead: Double = 0) -> [BirdReadout] {
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
 
         // Greedy association by centre distance (in pixels), gated by box size.
@@ -123,10 +124,21 @@ final class MultiBirdTracker {
 
         tracks.removeAll { time - $0.lastSeen > maxCoastTime }
 
-        return tracks
+        return snapshot(captureTime: time, geometry: geometry, leadGeometry: leadGeometry,
+                        leadAhead: leadAhead, presetSize: presetSizeMeters, loadout: loadout)
+    }
+
+    /// Current readouts without a new frame.
+    /// - Parameters:
+    ///   - captureTime: when the latest frame was taken.
+    ///   - leadGeometry: where the barrel points *now* (gun camera; nil = same as `geometry`).
+    ///   - leadAhead: seconds from that frame to now; birds are moved forward by that much for the lead.
+    func snapshot(captureTime time: Double, geometry: CameraGeometry, leadGeometry: CameraGeometry?,
+                  leadAhead: Double, presetSize: Double, loadout: Loadout) -> [BirdReadout] {
+        tracks
             .filter { $0.hits >= 3 && time - $0.lastSeen < 0.25 && $0.filter.isInitialized }
-            .map { readout(for: $0, time: time, presetSize: presetSizeMeters,
-                           geometry: geometry, loadout: loadout) }
+            .map { readout(for: $0, time: time, presetSize: presetSize, geometry: geometry,
+                           leadGeometry: leadGeometry, leadAhead: leadAhead, loadout: loadout) }
     }
 
     // MARK: - Species
@@ -212,7 +224,8 @@ final class MultiBirdTracker {
     }
 
     private func readout(for track: Track, time: Double, presetSize: Double,
-                         geometry: CameraGeometry, loadout: Loadout) -> BirdReadout {
+                         geometry: CameraGeometry, leadGeometry: CameraGeometry?, leadAhead: Double,
+                         loadout: Loadout) -> BirdReadout {
         let p = track.filter.position
         let v = track.filter.velocity
         let distance = simd_length(p)
@@ -237,7 +250,10 @@ final class MultiBirdTracker {
             speciesConfidence = best.confidence
         }
         let wingspan = track.wingspanInUse ?? presetSize
-        let lead = LeadSolver.solve(position: p, velocity: speed == nil ? nil : v, geometry: geometry,
+        // Gun camera: the video arrives a little late, so move the bird to where it is now.
+        let leadPosition = speed == nil ? p : p + v * leadAhead
+        let lead = LeadSolver.solve(position: leadPosition, velocity: speed == nil ? nil : v,
+                                    geometry: leadGeometry ?? geometry,
                                     wingspan: wingspan, loadout: loadout)
 
         return BirdReadout(id: track.id, rect: track.rect, confidence: track.confidence,

@@ -29,8 +29,26 @@ enum Format {
 
 /// Maps a normalised image rect onto a view showing that image with aspect-fill.
 func aspectFillRect(_ normalized: CGRect, imageSize: CGSize, in viewSize: CGSize) -> CGRect {
+    imageRect(normalized, imageSize: imageSize, in: viewSize, fill: true)
+}
+
+/// Maps a normalised image rect onto a view showing that image with aspect-fit (letterboxed).
+func aspectFitRect(_ normalized: CGRect, imageSize: CGSize, in viewSize: CGSize) -> CGRect {
+    imageRect(normalized, imageSize: imageSize, in: viewSize, fill: false)
+}
+
+/// A point in a view showing an image with aspect-fit → normalised image coordinates (nil = outside).
+func normalizedPointInFit(_ p: CGPoint, imageSize: CGSize, in viewSize: CGSize) -> CGPoint? {
+    let r = aspectFitRect(CGRect(x: 0, y: 0, width: 1, height: 1), imageSize: imageSize, in: viewSize)
+    guard r.width > 0, r.height > 0 else { return nil }
+    let x = (p.x - r.minX) / r.width, y = (p.y - r.minY) / r.height
+    return (0...1).contains(x) && (0...1).contains(y) ? CGPoint(x: x, y: y) : nil
+}
+
+func imageRect(_ normalized: CGRect, imageSize: CGSize, in viewSize: CGSize, fill: Bool) -> CGRect {
     guard imageSize.width > 0, imageSize.height > 0 else { return .zero }
-    let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
+    let sx = viewSize.width / imageSize.width, sy = viewSize.height / imageSize.height
+    let scale = fill ? max(sx, sy) : min(sx, sy)
     let drawnWidth = imageSize.width * scale
     let drawnHeight = imageSize.height * scale
     let offsetX = (viewSize.width - drawnWidth) / 2

@@ -29,6 +29,11 @@ targets:
         CFBundleDisplayName: Bird Tracker
         NSCameraUsageDescription: Bird Tracker uses the camera to detect birds and measure their distance, speed and flight direction.
         NSMotionUsageDescription: Bird Tracker uses motion sensors and the compass to turn on-screen movement into real flight direction.
+        NSBluetoothAlwaysUsageDescription: Bird Tracker connects to the motion sensor on your gun and can switch on your GoPro's Wi-Fi.
+        NSLocalNetworkUsageDescription: Bird Tracker receives live video from your GoPro over its Wi-Fi network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities: [arm64, still-camera, magnetometer]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
