@@ -1,0 +1,43 @@
+name: Gun camera case (STL)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hardware/**"
+      - ".github/workflows/case-stl.yml"
+  workflow_dispatch:
+
+jobs:
+  stl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad xvfb
+
+      - name: Render print files
+        working-directory: hardware/gun-camera
+        run: |
+          mkdir -p out
+          for p in tube tray cap pin; do
+            openscad -o "out/$p.stl" -D "part=\"$p\"" case.scad 2>&1 | tee "out/$p.log"
+            test -s "out/$p.stl"
+          done
+          ls -l out
+
+      - name: Render preview pictures
+        working-directory: hardware/gun-camera
+        run: |
+          xvfb-run -a openscad -o out/assembly.png -D 'part="all"' --imgsize=1600,1000 \
+            --viewall --autocenter --colorscheme=Tomorrow --camera=0,0,0,60,0,35,0 case.scad || true
+          xvfb-run -a openscad -o out/tray.png -D 'part="tray"' --imgsize=1200,1000 \
+            --viewall --autocenter --colorscheme=Tomorrow --render case.scad || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gun-camera-case
+          path: hardware/gun-camera/out

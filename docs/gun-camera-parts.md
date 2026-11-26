@@ -29,14 +29,16 @@ its camera pipeline.
 | 2 | **Raspberry Pi Camera Module 3, standard lens** (not Wide, not NoIR) | 12 MP, 66° view, good in low light. The narrower view gives more pixels per bird | [BerryBase](https://www.berrybase.de/en/raspberry-pi-camera-module-3-12mp) (€28.90) · [The Pi Hut](https://thepihut.com/products/raspberry-pi-camera-module-3) (£24, includes the Zero cable) | €29 |
 | 3 | **Pi Zero camera cable, 22-pin to 15-pin**, about 38–100 mm | Pi Zero uses a smaller camera socket. Skip this if your camera came with the 200 mm Zero cable (The Pi Hut's does) | [The Pi Hut, 38 mm stub](https://thepihut.com/collections/raspberry-pi-camera-cables/products/raspberry-pi-zero-stub-camera-cable-38mm) (£2.50) or similar at BerryBase/Botland | €3 |
 | 4 | **Adafruit BNO085 9-DOF orientation sensor, STEMMA QT** (Adafruit 4754) | Gyro, accelerometer and compass with built-in orientation fusion, hundreds of readings a second | [BerryBase](https://www.berrybase.de/en/adafruit-9-dof-orientation-imu-fusion-breakout-bno085-bno080) (€37.50) · [The Pi Hut](https://thepihut.com/products/adafruit-9-dof-orientation-imu-fusion-breakout-bno085-bno080-stemma-qt-qwiic) (£26.40) | €30–38 |
-| 5 | **STEMMA QT / Qwiic cable to female sockets, 150 mm** (Adafruit 4397) | Plugs the sensor onto the Pi's pins without soldering | [Botland](https://botland.store/1426-female-to-female-connecting-cables) (€1.90) | €2 |
+| 5 | **SparkFun Qwiic SHIM for Raspberry Pi** (DEV-15794) + **STEMMA QT / Qwiic cable, 50 mm** (JST-SH 4-pin) | The SHIM presses onto the Pi's pins (no soldering) and gives a flat socket for the sensor cable. Plugged-on jumper wires would stand too tall for the tube | SparkFun resellers (e.g. Botland, BerryBase) | €5 |
 | 6 | **PiSugar 3** battery for Pi Zero (1200 mAh, USB-C charging, power button) | Clips under the Pi with spring pins and leaves the header free. Vendor says 8–10 h at light load; expect about 2–4 h while streaming | [Tindie, PiSugar Kitchen](https://www.tindie.com/products/pisugar/pisugar-3-battery-for-raspberry-pi-zero/) ($39.99) | €37 |
 | 7 | **microSD card, 32 GB "High Endurance"** (e.g. SanDisk High Endurance) | System disk. High-endurance cards cope better with heat and constant writing | Any shop | €10 |
-| 8 | **Small adhesive copper heatsink** for the Pi Zero (about 14 × 14 mm) | Constant video encoding and Wi-Fi warm the chip | Any shop | €2 |
-| 9 | **GoPro-compatible barrel mount** | The case will have GoPro mounting fingers, so any GoPro shotgun or barrel mount works | Any shop | €15–30 |
-| 10 | **3D-printed case** | Holds everything firmly against recoil, with foam padding and GoPro mounting fingers. I'll design the file once the parts are confirmed | Online print service (e.g. JLCPCB/Craftcloud) or a local maker space | €10–20 |
+| 8 | **Small adhesive heatsink** for the Pi Zero, about 13 × 13 mm and **at most 3 mm tall** | Constant video encoding and Wi-Fi warm the chip. The sensor sits above it | Any shop | €2 |
+| 9 | **Screws:** 4 × M2 × 5 (camera), 4 × M2.5 × 12 (Pi stack), 2 × M2.5 × 6 (sensor), 2 × M2.5 × 8 (cap) | Self-tapping into the printed tray | Any M2/M2.5 assortment | €5 |
+| 10 | **Two 12 mm hook-and-loop straps** + **1 mm rubber strip** | Strap the tube to the barrel; the rubber stops it sliding and protects the finish | Any shop | €5 |
+| 11 | **3D-printed case** (tube, tray, cap, pin) in PETG or ASA | Design: [`hardware/gun-camera`](../hardware/gun-camera/README.md), Ø 41 × 90.5 mm | Online print service (e.g. JLCPCB/Craftcloud) or a local maker space | €10–20 |
+| 12 | *Optional:* 12 × 1 mm clear acrylic disc | Keeps dust and rain off the lens | Any shop | €2 |
 
-**Total: about €150–170**, including the case and mount.
+**Total: about €140–160**, including the case and straps.
 
 **Cheaper battery option:** PiSugar S (same 1200 mAh, no clock or button) at about $28 on Tindie
 saves about €10.
@@ -51,12 +53,11 @@ saves about €10.
 
 1. Stick the heatsink on the Pi's main chip.
 2. Connect the camera ribbon. The contacts face the board on the Pi Zero side; lift the latch, insert, close.
-3. Sensor cable from the BNO085's STEMMA QT socket to the Pi header:
-   - red → pin 1 (3.3 V)
-   - blue → pin 3 (SDA)
-   - yellow → pin 5 (SCL)
-   - black → pin 6 (GND)
-4. Screw the PiSugar 3 under the Pi with the supplied screws (its spring pins touch the Pi's underside).
+3. Press the Qwiic SHIM onto the Pi's GPIO pins 1–6 (it holds by friction), then plug the
+   50 mm cable from the SHIM into the BNO085's STEMMA QT socket.
+4. Fit the PiSugar 3 under the Pi (its spring pins touch the Pi's underside).
+
+The full case assembly is in [`hardware/gun-camera/README.md`](../hardware/gun-camera/README.md).
 
 The PiSugar also talks on the same I²C pins at a different address, so it doesn't clash with
 the sensor.
@@ -66,8 +67,8 @@ the sensor.
 - **Sensor and Pi I²C:** the BNO085 is known to be fussy on the Raspberry Pi's I²C bus. The Pi
   software will use the settings that work reliably, a lower bus speed with clock-stretching
   tolerance. If that still fails, the Adafruit board can also be read over UART instead.
-- **Recoil:** the camera ribbon, SD card and battery must be held firmly. The case clamps the
-  board on foam, glues the ribbon in place and closes the SD slot. Expect one or two case versions.
+- **Recoil:** the camera ribbon, SD card and battery must be held firmly. The tray screws every
+  board down, the cap closes the SD slot, and the front wall takes the load. Expect one or two case versions.
 - **Accelerometer range:** the BNO085 measures up to ±8 g. Recoil goes beyond that, but the
   detector only needs to see a spike above about 6 g, so clipping does not matter.
 - **Waterproofing:** none. Keep it out of heavy rain.
@@ -82,5 +83,5 @@ the sensor.
 2. **iPhone app:** a new camera source, "Bird Tracker gun camera".
    - Exact frame timing replaces the delay measurement, and the known lens replaces the field-of-view measurement.
    - It keeps the barrel alignment, kill model and pocket lock from the GoPro source.
-3. **Case design:** a 3D-print file made to fit these exact parts.
+3. **Case design:** first version done ([`hardware/gun-camera`](../hardware/gun-camera/README.md)); final sizes after measuring the parts.
 4. **Step-by-step guide:** putting the system on the SD card, assembly and first test.

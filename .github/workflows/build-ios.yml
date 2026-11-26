@@ -6,7 +6,7 @@ name: Build iOS app
 on:
   push:
     branches: [main]
-    paths-ignore: ["training/**"]
+    paths-ignore: ["training/**", "hardware/**", "docs/**", ".github/workflows/case-stl.yml"]
   workflow_dispatch:
   # Rebuild after the species model has been retrained and committed.
   workflow_run:
