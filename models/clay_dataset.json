@@ -1,0 +1,7 @@
+{
+  "backgrounds": 606,
+  "train_images": 2400,
+  "train_boxes": 3535,
+  "val_images": 300,
+  "val_boxes": 435
+}
