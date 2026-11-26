@@ -120,6 +120,15 @@ final class BirdTrackingEngine: ObservableObject {
         loadoutLock.unlock()
     }
 
+    /// Phone camera zoom. Tracks restart because every bird's apparent size jumps with the zoom.
+    func setZoom(_ level: Double) {
+        processingLock.lock()
+        tracker.reset()
+        processingLock.unlock()
+        readouts = []
+        camera.setZoom(level)
+    }
+
     /// Pauses only the phone camera (e.g. while Settings may use it to scan a cartridge box).
     func pauseCamera() { camera.stop() }
 
@@ -135,11 +144,16 @@ final class BirdTrackingEngine: ObservableObject {
     private func processPhoneFrame(_ buffer: CVPixelBuffer, time: Double, focalPx: Double) {
         // Buffers are landscape; the app works in portrait, so width/height swap.
         let size = CGSize(width: CVPixelBufferGetHeight(buffer), height: CVPixelBufferGetWidth(buffer))
-        let geometry = CameraGeometry(imageSize: size, focalPx: focalPx,
-                                      deviceToWorld: motion.deviceToWorld ?? matrix_identity_double3x3)
+        // Orientation when the frame was taken (for the bird's position) and now (for the lead,
+        // since the reticle follows the phone as it is now).
+        let then = motion.deviceToWorld(at: time) ?? matrix_identity_double3x3
+        let geometry = CameraGeometry(imageSize: size, focalPx: focalPx, deviceToWorld: then)
+        let now = CACurrentMediaTime()
+        let current = CameraGeometry(imageSize: size, focalPx: focalPx,
+                                     deviceToWorld: motion.deviceToWorld ?? then)
         let settings = currentSettings()
         run(buffer, orientation: .right, time: time, size: size, geometry: geometry,
-            leadGeometry: nil, leadAhead: 0, settings: settings)
+            leadGeometry: current, leadAhead: min(0.2, max(0, now - time)), settings: settings)
     }
 
     // MARK: - Gun camera

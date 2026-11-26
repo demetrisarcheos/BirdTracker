@@ -60,7 +60,7 @@ struct ContentView: View {
                 GoProVideoView(camera: engine.gopro, upsideDown: cameraUpsideDown)
                     .ignoresSafeArea()
             } else {
-                CameraPreview(session: engine.camera.session)
+                PhoneCameraPreview(camera: engine.camera)
                     .ignoresSafeArea()
             }
 
@@ -116,6 +116,12 @@ struct ContentView: View {
                         .transition(.scale.combined(with: .opacity))
                 }
                 ShootButton(lead: primary?.lead, action: { shoot() })
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) {
+                        if !gunMode {
+                            ZoomPicker(camera: engine.camera) { engine.setZoom($0) }
+                        }
+                    }
                 HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
                         speciesEnabled: identifySpecies && engine.speciesAvailable,
                         loadoutSummary: loadoutSummary)
@@ -232,6 +238,38 @@ struct ContentView: View {
     }
 }
 
+/// Phone camera preview that follows lens switches.
+private struct PhoneCameraPreview: View {
+    @ObservedObject var camera: CameraManager
+
+    var body: some View {
+        CameraPreview(session: camera.session, configurationID: camera.configurationID)
+    }
+}
+
+/// 1× / 2× / 5× buttons (real camera zoom; distance maths follows it).
+private struct ZoomPicker: View {
+    @ObservedObject var camera: CameraManager
+    let select: (Double) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(camera.zoomOptions, id: \.self) { level in
+                let active = abs(level - camera.zoom) < 0.01
+                Button {
+                    select(level)
+                } label: {
+                    Text(level == level.rounded() ? String(format: "%.0f×", level) : String(format: "%.1f×", level))
+                        .font(.caption.bold().monospacedDigit())
+                        .frame(width: 34, height: 34)
+                        .foregroundStyle(active ? .black : .white)
+                        .background(active ? Color.yellow : Color.black.opacity(0.45), in: Circle())
+                }
+            }
+        }
+    }
+}
+
 /// Bounding box + compact label drawn over each bird.
 struct BirdBoxView: View {
     let bird: BirdReadout
@@ -255,7 +293,11 @@ struct BirdBoxView: View {
 
     private var label: String {
         var parts = [bird.species ?? "#\(bird.id)", Format.distance(bird.distance)]
-        if let s = bird.speed { parts.append(Format.speed(s, unit: unit)) }
+        if bird.perched {
+            parts.append("perched")
+        } else if let s = bird.speed {
+            parts.append(Format.speed(s, unit: unit))
+        }
         if let b = bird.bearing { parts.append(Format.shortCompass(b)) }
         return parts.joined(separator: " · ")
     }

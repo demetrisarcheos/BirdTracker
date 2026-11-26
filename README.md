@@ -151,6 +151,24 @@ ballistics tool.
   - Boxes cut by the square's edge are ignored, and the full frame covers those birds.
   - The square is drawn faintly on screen.
 
+### 6c. Perched birds and zoom
+
+- **Perched test:** the velocity is split into two parts. Movement across the view is measured
+  precisely from the image position. Movement towards or away is measured poorly, from the bird's
+  size. Each part counts only when it is clearly above its noise:
+  - across the view: above 0.8 m/s and 3σ;
+  - towards or away: above 3 m/s and 3σ, and confirmed by a 1-second straight-line fit of the
+    measured distance.
+
+  If neither part counts, the bird shows **perched**, with no lead. Each phone frame uses the motion
+  reading from the moment it was taken (100 Hz history), so moving the phone does not move the bird.
+- **Zoom (1× / 2× / 5×):** real camera zoom.
+  - 2× is a crop of the main camera's sensor.
+  - 5× switches to the telephoto lens.
+  - The focal length follows the lens and zoom, checked against the per-frame camera intrinsics,
+    so distance and speed stay correct.
+  - Tracks restart when the zoom changes.
+
 ### 7. GoPro on the gun (phone in the pocket)
 
 Settings › Camera › **GoPro on the gun**. The video comes from a GoPro (HERO9 or newer; recommended:

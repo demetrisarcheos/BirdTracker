@@ -4,6 +4,8 @@ import SwiftUI
 /// Live camera preview, aspect-fill, portrait.
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    /// Bumped when the lens changes, so the new connection gets the portrait rotation too.
+    var configurationID = 0
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -12,7 +14,10 @@ struct CameraPreview: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        _ = configurationID
+        uiView.setNeedsLayout()
+    }
 
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }

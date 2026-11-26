@@ -17,14 +17,31 @@ final class MotionProvider {
 
     private(set) var hasCompass = false
 
+    /// Recent orientations with their timestamps (same clock as camera frames), ~1.5 s.
+    private var history: [(t: Double, r: simd_double3x3)] = []
+
     var deviceToWorld: simd_double3x3? {
         lock.lock(); defer { lock.unlock() }
         return _deviceToWorld
     }
 
+    /// Orientation at the moment a camera frame was taken (nearest reading, ~10 ms apart).
+    /// Using the latest reading instead makes a still bird appear to move while the phone moves.
+    func deviceToWorld(at time: Double) -> simd_double3x3? {
+        lock.lock(); defer { lock.unlock() }
+        guard let newest = history.last else { return _deviceToWorld }
+        if time >= newest.t { return newest.r }
+        var best = newest
+        for entry in history.reversed() {
+            if abs(entry.t - time) < abs(best.t - time) { best = entry }
+            if entry.t < time { break }
+        }
+        return abs(best.t - time) < 0.1 ? best.r : newest.r
+    }
+
     func start() {
         guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
-        manager.deviceMotionUpdateInterval = 1.0 / 60.0
+        manager.deviceMotionUpdateInterval = 1.0 / 100.0
         manager.showsDeviceMovementDisplay = true   // lets iOS prompt for compass calibration
 
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
@@ -66,6 +83,8 @@ final class MotionProvider {
 
         lock.lock()
         _deviceToWorld = d2w
+        history.append((motion.timestamp, d2w))      // seconds since boot = camera frame clock
+        if history.count > 150 { history.removeFirst(history.count - 150) }
         lock.unlock()
     }
 }

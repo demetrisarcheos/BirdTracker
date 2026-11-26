@@ -17,6 +17,9 @@ struct KalmanCV3D {
     private var pvv = matrix_identity_double3x3
     private var lastTime: Double = 0
 
+    /// Velocity covariance, (m/s)².
+    var velocityCovariance: simd_double3x3 { pvv }
+
     /// 1-sigma speed uncertainty (m/s).
     var speedSigma: Double { sqrt(max(0, pvv[0, 0] + pvv[1, 1] + pvv[2, 2])) }
 

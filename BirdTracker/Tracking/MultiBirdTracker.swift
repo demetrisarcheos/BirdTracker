@@ -20,6 +20,8 @@ struct BirdReadout: Identifiable, Equatable {
     let verticalSpeed: Double?
     /// m/s, + = moving away from you, − = approaching.
     let radialSpeed: Double?
+    /// No movement clearly above the measurement noise (perched or hovering).
+    let perched: Bool
     /// Best species guess (display name) and its averaged confidence, if any.
     let species: String?
     let speciesConfidence: Float?
@@ -43,6 +45,8 @@ final class MultiBirdTracker {
         var hits = 0
         /// Apparent sizes (px) with their weight: zoom boxes count 3×, full-frame boxes 1×.
         var sizeHistory: [(size: Double, weight: Double)] = []
+        /// Measured distance over the last ~1.2 s (to tell real approach/retreat from size jitter).
+        var depthHistory: [(t: Double, d: Double)] = []
         var filter = KalmanCV3D()
         var wingspanInUse: Double?
         var lastClassified = -Double.infinity
@@ -75,6 +79,9 @@ final class MultiBirdTracker {
     var pixelNoise = 4.0            // px, box jitter of a full-frame detection
     var zoomPrecision = 3.0         // centre-zoom boxes are about this much finer
     var flapNoise = 0.15            // 15 % frame-to-frame size jitter from wing beats
+    /// Slower than this (m/s) counts as not moving: across the view / towards-away.
+    var minLateralSpeed = 0.8
+    static let minRadialSpeed = 3.0
 
     var classifyInterval = 0.2      // s between species classifications of one bird (~5/s)
     var minClassifySizePx = 32.0    // smaller birds are too blurry to identify
@@ -207,10 +214,13 @@ final class MultiBirdTracker {
         if let current = track.wingspanInUse, abs(current - wingspan) > 0.01 * current {
             track.filter = KalmanCV3D()
             track.motionStart = time
+            track.depthHistory.removeAll()
         }
         track.wingspanInUse = wingspan
 
         let depth = geometry.depth(realSizeMeters: wingspan, sizePixels: medianSize)
+        track.depthHistory.append((time, depth))
+        track.depthHistory.removeAll { time - $0.t > 1.2 }
         let centre = CGPoint(x: r.midX * CGFloat(w), y: r.midY * CGFloat(h))
         let pointCamera = geometry.ray(throughPixel: centre) * depth
 
@@ -228,6 +238,26 @@ final class MultiBirdTracker {
         let rWorld = toWorld * rCamera * toWorld.transpose
 
         track.filter.update(measurement: pointWorld, covariance: rWorld, time: time)
+    }
+
+    /// Is the distance really changing (in the direction the filter says), or just jittering?
+    /// Straight-line fit over the last ~1 s: the slope must be fast and well above its own uncertainty.
+    private static func distanceTrendIsReal(_ history: [(t: Double, d: Double)], sign: Double) -> Bool {
+        guard history.count >= 8, let first = history.first, let last = history.last,
+              last.t - first.t >= 0.5 else { return false }
+        let n = Double(history.count)
+        let meanT = history.reduce(0) { $0 + $1.t } / n
+        let meanD = history.reduce(0) { $0 + $1.d } / n
+        let sTT = history.reduce(0) { $0 + ($1.t - meanT) * ($1.t - meanT) }
+        let sTD = history.reduce(0) { $0 + ($1.t - meanT) * ($1.d - meanD) }
+        guard sTT > 0 else { return false }
+        let slope = sTD / sTT
+        let residual = history.reduce(0) { r, e in
+            let fit = meanD + slope * (e.t - meanT)
+            return r + (e.d - fit) * (e.d - fit)
+        }
+        let slopeSE = (residual / max(1, n - 2) / sTT).squareRoot()
+        return slope * sign > 0 && abs(slope) > max(minRadialSpeed, 3 * slopeSE)
     }
 
     private static func weightedMedian(_ items: [(size: Double, weight: Double)]) -> Double {
@@ -249,14 +279,31 @@ final class MultiBirdTracker {
         let distance = simd_length(p)
 
         var speed: Double?, bearing: Double?, vertical: Double?, radial: Double?
+        var motion = SIMD3<Double>.zero          // velocity that is actually believed
+        var perched = false
         if time - track.motionStart >= minAgeForMotion {
-            speed = simd_length(v)
-            vertical = v.z
-            radial = distance > 0 ? simd_dot(v, p) / distance : 0
-            let horizontal = hypot(v.x, v.y)
+            // Split the velocity into across the view (measured precisely from the image position) and
+            // towards/away (measured poorly, from the bird's size). Each part only counts when it is
+            // clearly bigger than its noise; otherwise size jitter on a perched bird reads as 30–60 km/h.
+            let u = distance > 0 ? p / distance : SIMD3<Double>(0, 0, 1)
+            let cov = track.filter.velocityCovariance
+            let vRadial = simd_dot(v, u)
+            let vLateral = v - vRadial * u
+            let sigmaRadial = max(0, simd_dot(u, cov * u)).squareRoot()
+            let sigmaLateral = max(0, (cov[0, 0] + cov[1, 1] + cov[2, 2] - sigmaRadial * sigmaRadial) / 2).squareRoot()
+            let lateralReal = simd_length(vLateral) > max(minLateralSpeed, 3 * sigmaLateral)
+            let radialReal = abs(vRadial) > max(Self.minRadialSpeed, 3 * sigmaRadial)
+                && Self.distanceTrendIsReal(track.depthHistory, sign: vRadial)
+
+            motion = (lateralReal ? vLateral : .zero) + (radialReal ? vRadial * u : .zero)
+            perched = !lateralReal && !radialReal
+            speed = simd_length(motion)
+            vertical = motion.z
+            radial = radialReal ? vRadial : 0
+            let horizontal = hypot(motion.x, motion.y)
             if horizontal > 0.7 {
                 // World x = north, y = west  →  east = −y
-                var deg = atan2(-v.y, v.x) * 180 / .pi
+                var deg = atan2(-motion.y, motion.x) * 180 / .pi
                 if deg < 0 { deg += 360 }
                 bearing = deg
             }
@@ -269,15 +316,15 @@ final class MultiBirdTracker {
         }
         let wingspan = track.wingspanInUse ?? presetSize
         // Gun camera: the video arrives a little late, so move the bird to where it is now.
-        let leadPosition = speed == nil ? p : p + v * leadAhead
-        let lead = LeadSolver.solve(position: leadPosition, velocity: speed == nil ? nil : v,
+        let leadPosition = speed == nil ? p : p + motion * leadAhead
+        let lead = LeadSolver.solve(position: leadPosition, velocity: speed == nil ? nil : motion,
                                     geometry: leadGeometry ?? geometry,
                                     wingspan: wingspan, loadout: loadout)
 
         return BirdReadout(id: track.id, rect: track.rect, confidence: track.confidence,
                            distance: distance, heightAboveCamera: p.z,
                            speed: speed, bearing: bearing,
-                           verticalSpeed: vertical, radialSpeed: radial,
+                           verticalSpeed: vertical, radialSpeed: radial, perched: perched,
                            species: species, speciesConfidence: speciesConfidence,
                            wingspan: wingspan,
                            wingspanFromSpecies: abs(wingspan - presetSize) > 1e-6,

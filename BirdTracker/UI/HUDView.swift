@@ -14,16 +14,16 @@ struct HUDView: View {
                 speciesRow(bird)
                 HStack(alignment: .top, spacing: 8) {
                     metric("DISTANCE", Format.distance(bird.distance))
-                    metric("SPEED", bird.speed.map { Format.speed($0, unit: unit) } ?? "…")
+                    metric("SPEED", bird.perched ? "Perched" : (bird.speed.map { Format.speed($0, unit: unit) } ?? "…"))
                     direction(bird)
                 }
                 HStack(spacing: 14) {
                     detail("arrow.up.and.down", "Height " + String(format: "%+.0f m", bird.heightAboveCamera))
-                    if let v = bird.verticalSpeed {
+                    if let v = bird.verticalSpeed, !bird.perched, abs(v) >= 0.1 {
                         detail(v >= 0 ? "arrow.up.right" : "arrow.down.right",
                                (v >= 0 ? "Climbing " : "Descending ") + String(format: "%.1f m/s", abs(v)))
                     }
-                    if let r = bird.radialSpeed {
+                    if let r = bird.radialSpeed, r != 0 {
                         detail(r >= 0 ? "arrow.up.forward.circle" : "arrow.down.backward.circle",
                                (r >= 0 ? "Away " : "Toward ") + String(format: "%.1f m/s", abs(r)))
                     }
@@ -111,7 +111,7 @@ struct HUDView: View {
                         .lineLimit(1)
                 }
             } else {
-                Text(bird.speed == nil ? "…" : "Hovering").font(.title3.bold())
+                Text(bird.speed == nil ? "…" : (bird.perched ? "—" : "Hovering")).font(.title3.bold())
             }
         }
         .frame(maxWidth: .infinity)
