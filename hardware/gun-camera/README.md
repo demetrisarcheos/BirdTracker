@@ -1,7 +1,7 @@
 # Gun camera case (cylindrical, tight version)
 
 **Size:** Ø 41 mm × 90.5 mm, plus two 7 mm saddles underneath.
-**Weight:** about 100 g with all parts (about 40 g of plastic).
+**Weight:** about 110 g with all parts (about 50 g of PETG and 57 g of electronics and screws), plus about 6 g of straps.
 
 The source is [`case.scad`](case.scad), an OpenSCAD file where every size is a named
 setting at the top. GitHub renders the print files automatically: Actions › **Gun camera case
