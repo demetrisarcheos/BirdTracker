@@ -56,7 +56,23 @@ struct HUDView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
+    @ViewBuilder
     private func speciesRow(_ bird: BirdReadout) -> some View {
+        if bird.isClay {
+            HStack(spacing: 8) {
+                Image(systemName: "circle.circle.fill").foregroundStyle(.orange)
+                Text("Clay").font(.headline)
+                Spacer()
+                Text(String(format: "diameter %.0f mm", bird.wingspan * 1000))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            birdRow(bird)
+        }
+    }
+
+    private func birdRow(_ bird: BirdReadout) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "bird.fill").foregroundStyle(.yellow)
             if let species = bird.species, let conf = bird.speciesConfidence {

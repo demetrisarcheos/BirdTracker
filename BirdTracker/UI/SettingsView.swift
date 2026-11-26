@@ -15,7 +15,11 @@ struct SettingsView: View {
     @AppStorage(AppSettings.cameraSourceKey) private var cameraSourceRaw = CameraSource.phone.rawValue
     @AppStorage(AppSettings.highFrameRateKey) private var highFrameRate = true
     @AppStorage(AppSettings.centreZoomKey) private var centreZoom = true
+    @AppStorage(AppSettings.userModeKey) private var userModeRaw = UserMode.hunter.rawValue
+    @AppStorage(AppSettings.clayTypeKey) private var clayTypeRaw = ClayType.standard.rawValue
     @Environment(\.dismiss) private var dismiss
+
+    private var shooter: Bool { userModeRaw == UserMode.shooter.rawValue }
 
     private var gearSummary: (gun: String, cartridge: String) {
         let gun = GearStore.gun(gunJSON)
@@ -26,6 +30,31 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("I am a", selection: $userModeRaw) {
+                        ForEach(UserMode.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Mode")
+                } footer: {
+                    Text(shooter
+                         ? "Shooter: clay targets. Distance comes from the clay size below, the aim is the clay's centre, and a visible piece counts as a hit."
+                         : "Hunter: birds. The aim is the head, neck and chest.")
+                }
+
+                if shooter {
+                    Section {
+                        Picker("Clay type", selection: $clayTypeRaw) {
+                            ForEach(ClayType.allCases) { Text($0.title).tag($0.rawValue) }
+                        }
+                    } header: {
+                        Text("Clay targets")
+                    } footer: {
+                        Text("Distance and speed are worked out from the clay's diameter, so pick the size being thrown.")
+                    }
+                }
+
                 Section {
                     Picker("Camera", selection: $cameraSourceRaw) {
                         ForEach(CameraSource.allCases) { Text($0.title).tag($0.rawValue) }
@@ -39,6 +68,7 @@ struct SettingsView: View {
                          "phone's own sensors no longer move with the camera. Takes effect when you close Settings.")
                 }
 
+                if !shooter {
                 Section {
                     ForEach(BirdSizePreset.allCases) { preset in
                         Button {
@@ -76,6 +106,7 @@ struct SettingsView: View {
                          "wingspan instead of the preset above. Works best on birds that fill a good " +
                          "part of the screen.")
                 }
+                }
 
                 Section {
                     NavigationLink {
@@ -99,8 +130,10 @@ struct SettingsView: View {
                          "the bird, using its speed, direction and distance with your cartridge's pellet " +
                          "ballistics (drag, drop, energy) and your choke's pattern. SHOOT means a shot fired now " +
                          "would kill cleanly at least 80 % of the time. Aiming beeps work like a parking sensor: " +
-                         "faster as you close in, a steady tone at the shooting point. Sounds are muted when the " +
-                         "phone is on silent. Long-press the score to reset it.")
+                         "faster as you close in, a steady tone at the shooting point. With the phone camera, " +
+                         "sounds are muted when the phone is on silent. With the GoPro on the gun they always " +
+                         "play and keep going with the phone locked in your pocket; a real shot then sounds two " +
+                         "high chirps for a hit or a low buzz for a miss. Long-press the score to reset it.")
                 }
 
                 Section {

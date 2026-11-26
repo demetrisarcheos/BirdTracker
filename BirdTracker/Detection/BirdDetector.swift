@@ -12,40 +12,68 @@ struct Detection {
 
 enum DetectorError: LocalizedError {
     case modelNotFound
+    case clayModelNotFound
 
     var errorDescription: String? {
-        "No YOLO26 Core ML model found in the app bundle. Run scripts/export_yolo26.py, " +
-        "put the .mlpackage in BirdTracker/Models and rebuild."
+        switch self {
+        case .modelNotFound:
+            return "No YOLO26 Core ML model found in the app bundle. Run scripts/export_yolo26.py, " +
+                "put the .mlpackage in BirdTracker/Models and rebuild."
+        case .clayModelNotFound:
+            return "This build has no clay-target model yet. It is trained on GitHub by the " +
+                "\"Train clay model\" workflow; the next app build includes it."
+        }
     }
 }
 
-/// Runs YOLO26 (Core ML) through Vision and returns bird detections only.
+/// Which model to load and which of its classes to keep.
+struct DetectorTarget {
+    let modelName: String
+    let classIndex: Int
+    let label: String
+    /// Fall back to any other yolo*.mlmodelc in the bundle (not for clays: a bird model would
+    /// "find" nothing useful).
+    let allowOtherModels: Bool
+    let missingError: DetectorError
+
+    /// "bird" is class 14 in the COCO-80 label set that the stock YOLO26 weights use.
+    static let bird = DetectorTarget(modelName: AppSettings.modelName, classIndex: 14, label: "bird",
+                                     allowOtherModels: true, missingError: .modelNotFound)
+    /// Our own one-class model.
+    static let clay = DetectorTarget(modelName: AppSettings.clayModelName, classIndex: 0, label: "clay",
+                                     allowOtherModels: false, missingError: .clayModelNotFound)
+
+    static func forKind(_ kind: TargetKind) -> DetectorTarget { kind == .bird ? .bird : .clay }
+}
+
+/// Runs YOLO26 (Core ML) through Vision and returns detections of one class (birds or clays).
 ///
 /// Handles every output layout Ultralytics can export:
 ///  • Vision object observations (model exported with an NMS pipeline)
 ///  • YOLO26 end-to-end / NMS-free tensor  [1, N, 6] = x1, y1, x2, y2, score, class
 ///  • Classic raw head                      [1, 4 + classes, anchors] (NMS done here)
 final class BirdDetector {
-    /// "bird" is class 14 in the COCO-80 label set that the stock YOLO26 weights use.
-    static let cocoBirdClass = 14
-
     var confidenceThreshold: Float = 0.30
     var iouThreshold: Float = 0.45
 
+    let target: DetectorTarget
     private let request: VNCoreMLRequest
     private let inputSize: CGSize
 
-    init(preferredModelName: String = "yolo26n") throws {
+    init(target: DetectorTarget = .bird) throws {
+        self.target = target
         let bundle = Bundle.main
         let all = bundle.urls(forResourcesWithExtension: "mlmodelc", subdirectory: nil) ?? []
-        guard let url = bundle.url(forResource: preferredModelName, withExtension: "mlmodelc")
-                ?? all.first(where: { $0.lastPathComponent.lowercased().hasPrefix("yolo") })
-                ?? all.first else {
-            throw DetectorError.modelNotFound
+        let fallback = target.allowOtherModels
+            ? all.first(where: { $0.lastPathComponent.lowercased().hasPrefix("yolo") }) : nil
+        guard let url = bundle.url(forResource: target.modelName, withExtension: "mlmodelc") ?? fallback else {
+            throw target.missingError
         }
 
         let config = MLModelConfiguration()
-        config.computeUnits = .all          // Neural Engine when available
+        // CPU + Neural Engine, not the GPU: iOS forbids GPU work while the app runs in the
+        // background (gun camera with the phone locked in a pocket).
+        config.computeUnits = .cpuAndNeuralEngine
         let model = try MLModel(contentsOf: url, configuration: config)
         inputSize = Self.imageInputSize(of: model) ?? CGSize(width: 640, height: 640)
 
@@ -133,7 +161,7 @@ final class BirdDetector {
     // MARK: - Vision observations
 
     private func detection(from observation: VNRecognizedObjectObservation) -> Detection? {
-        guard let label = observation.labels.first(where: { $0.identifier.lowercased() == "bird" }),
+        guard let label = observation.labels.first(where: { $0.identifier.lowercased() == target.label }),
               label.confidence >= confidenceThreshold else { return nil }
         let b = observation.boundingBox                    // bottom-left origin
         return Detection(rect: CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height),
@@ -157,7 +185,7 @@ final class BirdDetector {
             for i in 0..<n {
                 func v(_ k: Int) -> Float { transposed ? t[k, i] : t[i, k] }
                 let score = v(4)
-                guard score >= confidenceThreshold, Int(v(5).rounded()) == Self.cocoBirdClass,
+                guard score >= confidenceThreshold, Int(v(5).rounded()) == target.classIndex,
                       let rect = normalise(x1: v(0), y1: v(1), x2: v(2), y2: v(3)) else { continue }
                 out.append(Detection(rect: rect, confidence: score))
             }
@@ -168,7 +196,7 @@ final class BirdDetector {
         let channelsFirst = rows < cols
         let channels = channelsFirst ? rows : cols
         let anchors = channelsFirst ? cols : rows
-        let scoreIndex = 4 + Self.cocoBirdClass
+        let scoreIndex = 4 + target.classIndex
         guard channels > scoreIndex else { return [] }
 
         var candidates: [Detection] = []

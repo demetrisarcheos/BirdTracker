@@ -17,7 +17,7 @@ final class SpeciesClassifier {
     init?(modelName: String = "BirdSpecies") {
         guard let url = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") else { return nil }
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        config.computeUnits = .cpuAndNeuralEngine   // no GPU in the background
         guard let model = try? MLModel(contentsOf: url, configuration: config),
               let vnModel = try? VNCoreMLModel(for: model) else { return nil }
         request = VNCoreMLRequest(model: vnModel)

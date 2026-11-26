@@ -209,6 +209,49 @@ phone's own sensors cannot be used because the phone no longer moves with the ca
 
 None of this has been tested with real hardware yet.
 
+- **Background:** with the gun camera selected, the app keeps running when you lock the phone or
+  switch apps. It keeps the GoPro video, the gun sensor, detection and the aiming beeps going.
+  - This uses iOS's audio and Bluetooth background modes. The beeps then also play with the silent
+    switch on.
+  - A real shot sounds two high chirps for a hit or a low buzz for a miss.
+  - The models run on the CPU and Neural Engine, because iOS forbids GPU work in the background.
+  - The phone camera always stops in the background; iOS doesn't allow it.
+  - The app stops only when it is closed from the app switcher.
+
+### 8. Hunter or shooter (clay targets)
+
+Every fresh launch asks **"I am a hunter"** or **"I am a shooter"**. It isn't asked again when
+coming back from the background, and it can be changed in Settings › Mode.
+
+**Shooter mode** works like hunter mode, with clay targets instead of birds:
+- **Detector:** our own one-class YOLO26n model (`ClayDetector.mlpackage`), not the COCO bird class.
+- **Distance:** from the clay's diameter (Settings › Clay type: standard 110 mm, midi 90, mini 60,
+  battue 108, rabbit 110). The box's long side is the diameter whatever the clay's angle.
+- **Never perched.** Size jitter is set lower than for birds, which have wing beats.
+- **Aim:** always the clay's centre.
+- **Break model:**
+  - Hit area: half the disc on average, since a clay is seen at an angle.
+  - Two or more pellets with at least 0.5 J break it; one usually chips it. A visible piece counts
+    as a hit, as in the rules.
+  - Results read BROKEN, CHIPPED, HIT NOT BROKEN or MISS.
+- **Not used:** species recognition and the head/neck aim.
+
+**How the clay model is trained** (`.github/workflows/train-clay.yml`, CPU only, on GitHub):
+1. No free set of labelled clay photos exists, so `training/clays/build_clay_dataset.py` makes
+   synthetic but realistic images.
+   - **Backgrounds:** free-licence photos from Wikimedia Commons: skies, clouds, countryside, tree
+     lines, shooting grounds, and birds in flight as "not a clay" examples. Credits are in
+     `models/clay_background_credits.csv`.
+   - **Clays drawn onto them:** seen from face-on to edge-on, with dome shading and a darker rim,
+     real clay colours (mostly orange and black), 5–90 px across, motion blur, defocus, noise and
+     JPEG compression.
+   - **Labels:** the box is the disc itself, without its blur streak, so box size stays tied to
+     the diameter.
+2. `training/clays/train_clay.py` fine-tunes YOLO26n (COCO weights) at 640 px and exports Core ML.
+   The iOS build then runs and bundles the model.
+3. Validation is on synthetic images, so real-world accuracy will be lower. Adding real labelled
+   clay photos later is the main way to improve it.
+
 ## Tips and limits
 
 - Keep zoom at 1× (the code locks it) — zoom changes the focal length.

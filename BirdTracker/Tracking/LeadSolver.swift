@@ -66,7 +66,7 @@ enum LeadSolver {
     ///   - position: bird position relative to the phone, world frame, metres.
     ///   - velocity: bird velocity, world frame, m/s; nil while it is not known yet.
     static func solve(position p: SIMD3<Double>, velocity: SIMD3<Double>?, geometry: CameraGeometry,
-                      wingspan: Double, loadout: Loadout) -> LeadSolution? {
+                      body: TargetBody, loadout: Loadout) -> LeadSolution? {
         var v = velocity ?? .zero
         if simd_length(v) < stillBelowSpeed { v = .zero }
 
@@ -105,9 +105,9 @@ enum LeadSolver {
 
         // Pellets per m² at the pattern centre, and how many would land on the bird.
         let centreDensity = loadout.pelletCount / (2 * .pi * sigma * sigma)
-        let needed = KillModel.minEnergy(wingspan: wingspan)
+        let needed = body.minEnergy
         let killing = KillModel.energyFactor(energy: impact.energy, needed: needed)
-        let vitalAtCentre = centreDensity * KillModel.vitalArea(wingspan: wingspan) * killing
+        let vitalAtCentre = centreDensity * body.vitalArea * killing
         let falloff = exp(-miss * miss / (2 * sigma * sigma))
 
         let lStar = KillModel.lambdaForThreshold
@@ -130,7 +130,7 @@ enum LeadSolver {
                             toleranceMeters: tolerance,
                             sigma: sigma,
                             expectedVitalHits: vitalAtCentre * falloff,
-                            expectedBodyHits: centreDensity * KillModel.bodyArea(wingspan: wingspan) * falloff,
+                            expectedBodyHits: centreDensity * body.bodyArea * falloff,
                             shotOffsetRight: -perp.x,
                             shotOffsetUp: perp.y,
                             screenMotion: motion,

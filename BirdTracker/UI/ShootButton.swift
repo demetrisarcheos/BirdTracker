@@ -91,20 +91,37 @@ struct ShotResult: Identifiable, Equatable {
 
     /// Simulates where the pellets went: random pellet counts drawn around the expected values
     /// for the current aim, so — as in real shooting — a good aim usually, not always, kills.
-    static func simulate(_ bird: BirdReadout?, barrelNote: String) -> ShotResult {
+    static func simulate(_ bird: BirdReadout?, barrelNote: String, clays: Bool = false) -> ShotResult {
+        let thing = clays ? "clay" : "bird"
         guard let bird, let lead = bird.lead else {
-            return ShotResult(outcome: .noShot, text: "No bird in the sights")
+            return ShotResult(outcome: .noShot, text: "No \(thing) in the sights")
         }
         let name = (bird.species ?? "bird").capitalized
         if !lead.ready {
-            return ShotResult(outcome: .noShot, text: "Too early – still measuring the bird's speed")
+            return ShotResult(outcome: .noShot, text: "Too early – still measuring the \(thing)'s speed")
         }
 
         let vital = KillModel.poisson(lead.expectedVitalHits)
         let body = max(vital, KillModel.poisson(lead.expectedBodyHits))
         let prefix = barrelNote.isEmpty ? "" : barrelNote + " · "
 
-        if vital >= 2 {
+        if bird.isClay {
+            // Rules: any visible piece counts as a hit. Two or more strong pellets break it;
+            // one strong pellet usually chips it.
+            let strong = lead.impactEnergy >= lead.neededEnergy
+            if vital >= 2 {
+                return ShotResult(outcome: .kill, text: String(
+                    format: "%@BROKEN! Clay at %.0f m – %d pellets hit (%.1f J each)",
+                    prefix, lead.range, vital, lead.impactEnergy))
+            }
+            if body >= 1 && strong {
+                return ShotResult(outcome: .kill, text: String(
+                    format: "%@CHIPPED – 1 pellet hit at %.0f m, a visible piece counts", prefix, lead.range))
+            }
+            if body >= 1 {
+                return ShotResult(outcome: .wounded, text: prefix + "HIT, NOT BROKEN – pellets too weak at this range")
+            }
+        } else if vital >= 2 {
             return ShotResult(outcome: .kill, text: String(
                 format: "%@HIT! %@ at %.0f m – %d pellets in the vitals (%.1f J each)",
                 prefix, name, lead.range, vital, lead.impactEnergy))

@@ -30,6 +30,8 @@ struct BirdReadout: Identifiable, Equatable {
     let wingspanFromSpecies: Bool
     /// Hunting simulation: where to aim and how close the reticle is to it.
     let lead: LeadSolution?
+    /// A clay target (shooter mode) rather than a bird; `wingspan` is then the clay's diameter.
+    var isClay = false
 }
 
 /// Associates detections across frames, runs a 3D Kalman filter per bird and
@@ -79,6 +81,10 @@ final class MultiBirdTracker {
     var pixelNoise = 4.0            // px, box jitter of a full-frame detection
     var zoomPrecision = 3.0         // centre-zoom boxes are about this much finer
     var flapNoise = 0.15            // 15 % frame-to-frame size jitter from wing beats
+    /// Birds or clays. Clays: never perched, aimed at the centre, smaller size jitter (no wings).
+    var targetKind: TargetKind = .bird {
+        didSet { flapNoise = targetKind == .clay ? 0.06 : 0.15 }
+    }
     /// Slower than this (m/s) counts as not moving: across the view / towards-away.
     var minLateralSpeed = 0.8
     static let minRadialSpeed = 3.0
@@ -327,7 +333,8 @@ final class MultiBirdTracker {
                 && Self.distanceTrendIsReal(track.depthHistory, sign: vRadial)
 
             motion = (lateralReal ? vLateral : .zero) + (radialReal ? vRadial * u : .zero)
-            perched = !lateralReal && !radialReal
+            // A clay in the air is never perched (at the top of its arc it may just be slow).
+            perched = targetKind == .bird && !lateralReal && !radialReal
             speed = simd_length(motion)
             vertical = motion.z
             radial = radialReal ? vRadial : 0
@@ -348,12 +355,16 @@ final class MultiBirdTracker {
         let wingspan = track.wingspanInUse ?? presetSize
         // Gun camera: the video arrives a little late, so move the bird to where it is now.
         let leadPosition = speed == nil ? p : p + motion * leadAhead
-        // Aim at the head, neck and chest rather than the middle of the box (wings and lower body).
-        let target = leadPosition + Self.vitalsOffset(rect: track.rect, distance: distance, motion: motion,
-                                                      perched: perched, known: speed != nil, geometry: geometry)
+        // Birds: aim at the head, neck and chest rather than the middle of the box (wings and lower
+        // body). Clays: the centre.
+        let isClay = targetKind == .clay
+        let target = isClay ? leadPosition
+            : leadPosition + Self.vitalsOffset(rect: track.rect, distance: distance, motion: motion,
+                                               perched: perched, known: speed != nil, geometry: geometry)
         let lead = LeadSolver.solve(position: target, velocity: speed == nil ? nil : motion,
                                     geometry: leadGeometry ?? geometry,
-                                    wingspan: wingspan, loadout: loadout)
+                                    body: isClay ? .clay(diameter: wingspan) : .bird(wingspan: wingspan),
+                                    loadout: loadout)
 
         return BirdReadout(id: track.id, rect: track.rect, confidence: track.confidence,
                            distance: distance, heightAboveCamera: p.z,
@@ -362,6 +373,6 @@ final class MultiBirdTracker {
                            species: species, speciesConfidence: speciesConfidence,
                            wingspan: wingspan,
                            wingspanFromSpecies: abs(wingspan - presetSize) > 1e-6,
-                           lead: lead)
+                           lead: lead, isClay: isClay)
     }
 }

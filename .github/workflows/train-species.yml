@@ -11,7 +11,7 @@ on:
         default: "30"
   push:
     branches: [main]
-    paths: ["training/**"]
+    paths: ["training/**", "!training/clays/**"]
 
 permissions:
   contents: write

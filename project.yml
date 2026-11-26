@@ -35,6 +35,9 @@ targets:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         UILaunchScreen: {}
+        # Gun camera with the phone in a pocket: keep receiving GoPro video, gun-sensor data and
+        # playing the aiming beeps while the app is in the background.
+        UIBackgroundModes: [audio, bluetooth-central]
         UIRequiredDeviceCapabilities: [arm64, still-camera, magnetometer]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIStatusBarHidden: true

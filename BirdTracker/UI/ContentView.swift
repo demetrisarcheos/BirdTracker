@@ -22,8 +22,12 @@ struct ContentView: View {
     @State private var nextBarrel = 1
     @AppStorage(AppSettings.cameraUpsideDownKey) private var cameraUpsideDown = false
     @State private var pocketLocked = false
+    /// Hunter or shooter is asked on every fresh launch; this stays true while the app lives in
+    /// the background, so coming back does not ask again.
+    @State private var modeChosen = false
 
     private var gunMode: Bool { engine.source == .gunCamera }
+    private var clays: Bool { engine.mode == .shooter }
 
     /// Phone preview fills the screen; the landscape GoPro picture is letterboxed.
     private func onScreen(_ rect: CGRect, in size: CGSize) -> CGRect {
@@ -133,21 +137,32 @@ struct ContentView: View {
             if pocketLocked {
                 PocketLockView { pocketLocked = false }
             }
+
+            if !modeChosen {
+                ModeChooserView { mode in
+                    UserDefaults.standard.set(mode.rawValue, forKey: AppSettings.userModeKey)
+                    modeChosen = true
+                    startAll()
+                }
+                .transition(.opacity)
+            }
         }
         .onReceive(engine.realShot) { readouts in shoot(realShot: readouts) }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             updateLoadout()
-            engine.start()
-            sound.start()
+            if modeChosen { startAll() }
         }
         .onChange(of: beepGap) { _, gap in sound.setBeepGap(gap) }
         .onChange(of: loadoutKey) { _, _ in updateLoadout() }
+        .onChange(of: engine.source) { _, source in sound.playsInBackground = source == .gunCamera }
         .onChange(of: scenePhase) { _, phase in
+            guard modeChosen else { return }
             if phase == .active {
-                engine.start()
-                sound.start()
-            } else if phase == .background {
+                startAll()
+            } else if phase == .background && !gunMode {
+                // The phone camera cannot run in the background. The gun camera keeps going
+                // (GoPro video, gun sensor, detection and beeps) with the phone locked in a pocket.
                 engine.stop()
                 sound.stop()
             }
@@ -159,6 +174,12 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings, onDismiss: { engine.start() }) {
             SettingsView().environmentObject(engine)
         }
+    }
+
+    private func startAll() {
+        engine.start()
+        sound.playsInBackground = engine.source == .gunCamera
+        sound.start()
     }
 
     private func updateLoadout() {
@@ -180,9 +201,11 @@ struct ContentView: View {
         let gun = GearStore.gun(gunJSON)
         let barrelNote = gun.action.isDouble ? "Barrel \(nextBarrel)" : ""
         let bird = readouts.map { Self.primaryBird($0) } ?? primary
-        let result = ShotResult.simulate(bird, barrelNote: barrelNote)
+        let result = ShotResult.simulate(bird, barrelNote: barrelNote, clays: clays)
         let real = readouts != nil
         if shotSound && !real { sound.playShot() }
+        // Real shot: the screen is probably in a pocket, so say the result with a sound.
+        if real && result.counts { sound.playResult(hit: result.hit) }
         if result.counts {
             shots += 1
             if result.hit { hits += 1 }
@@ -206,7 +229,7 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack {
-            Label("\(engine.readouts.count)", systemImage: "bird")
+            Label("\(engine.readouts.count)", systemImage: clays ? "circle.circle" : "bird")
                 .font(.headline)
             if shots > 0 {
                 Label("\(hits)/\(shots)", systemImage: "scope")

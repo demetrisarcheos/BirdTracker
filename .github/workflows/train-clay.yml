@@ -1,0 +1,69 @@
+# Builds a synthetic clay-target dataset (clays drawn onto free Wikimedia Commons photos),
+# fine-tunes YOLO26n on CPU, exports it to Core ML and commits models/ClayDetector.mlpackage.
+# The iOS build workflow then runs automatically and bundles the new model.
+name: Train clay model
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: Training epochs
+        default: "30"
+      hours:
+        description: Maximum training time (hours)
+        default: "4.2"
+      images:
+        description: Training images
+        default: "2400"
+  push:
+    branches: [main]
+    paths: ["training/clays/**", ".github/workflows/train-clay.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: train-clay
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (CPU-only PyTorch)
+        run: |
+          bash training/run_logged.sh "Install" bash -c '
+            pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu &&
+            pip install ultralytics coremltools pillow "numpy<2.0"'
+
+      - name: Build synthetic clay dataset
+        run: bash training/run_logged.sh "Dataset" python training/clays/build_clay_dataset.py "${{ github.event.inputs.images || '2400' }}" 300
+
+      - name: Train and export
+        run: bash training/run_logged.sh "Training" python training/clays/train_clay.py "${{ github.event.inputs.epochs || '30' }}" "${{ github.event.inputs.hours || '4.2' }}"
+
+      - name: Report accuracy
+        run: |
+          python - <<'EOF'
+          import json
+          r = json.load(open("models/clay_report.json"))
+          d = json.load(open("models/clay_dataset.json"))
+          print(f"::notice title=Clay model::mAP50 {r['mAP50_pct']}%, precision {r['precision_pct']}%, recall {r['recall_pct']}% on synthetic validation images. Backgrounds {d['backgrounds']}, train {d['train_images']} images / {d['train_boxes']} clays.")
+          EOF
+
+      - name: Commit model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/
+          map=$(python -c "import json;print(json.load(open('models/clay_report.json'))['mAP50_pct'])")
+          git commit -m "Train clay-target model (mAP50 ${map}% synthetic)" || exit 0
+          git pull --rebase
+          git push

@@ -23,6 +23,8 @@ final class BirdTrackingEngine: ObservableObject {
     @Published private(set) var cameraDenied = false
     @Published private(set) var speciesAvailable = true
     @Published private(set) var source: CameraSource = .phone
+    /// Hunter (birds) or shooter (clay targets), as chosen at launch or in Settings.
+    @Published private(set) var mode: UserMode = .hunter
     /// Where the barrel points in the image (normalised). Centre for the phone camera.
     @Published private(set) var boresight = CGPoint(x: 0.5, y: 0.5)
 
@@ -90,6 +92,7 @@ final class BirdTrackingEngine: ObservableObject {
             readouts = []
         }
         source = chosen
+        mode = UserMode.current
         boresight = chosen == .phone ? CGPoint(x: 0.5, y: 0.5) : AppSettings.boresight
 
         switch chosen {
@@ -219,7 +222,9 @@ final class BirdTrackingEngine: ObservableObject {
     // MARK: - Shared pipeline
 
     private struct FrameSettings {
+        let kind: TargetKind
         let confidence: Float
+        /// Bird wingspan or clay diameter (m): the real size behind the distance maths.
         let birdSize: Double
         let identifySpecies: Bool
         let centreZoom: Bool
@@ -231,9 +236,12 @@ final class BirdTrackingEngine: ObservableObject {
         loadoutLock.lock()
         let loadout = currentLoadout
         loadoutLock.unlock()
-        return FrameSettings(confidence: Float(defaults.double(forKey: AppSettings.confidenceKey)),
-                             birdSize: max(0.05, defaults.double(forKey: AppSettings.birdSizeKey)),
-                             identifySpecies: defaults.bool(forKey: AppSettings.identifySpeciesKey),
+        let kind = UserMode.current.targetKind
+        return FrameSettings(kind: kind,
+                             confidence: Float(defaults.double(forKey: AppSettings.confidenceKey)),
+                             birdSize: kind == .clay ? ClayType.current.diameter
+                                : max(0.05, defaults.double(forKey: AppSettings.birdSizeKey)),
+                             identifySpecies: kind == .bird && defaults.bool(forKey: AppSettings.identifySpeciesKey),
                              centreZoom: defaults.bool(forKey: AppSettings.centreZoomKey),
                              loadout: loadout)
     }
@@ -244,9 +252,17 @@ final class BirdTrackingEngine: ObservableObject {
         processingLock.lock()
         defer { processingLock.unlock() }
 
+        // Hunter ↔ shooter: other model, other tracking rules, start afresh.
+        if settings.kind != tracker.targetKind {
+            tracker.reset()
+            tracker.targetKind = settings.kind
+            detector = nil
+            detectorFailed = false
+            DispatchQueue.main.async { self.errorMessage = nil; self.readouts = [] }
+        }
         if detector == nil && !detectorFailed {
             do {
-                detector = try BirdDetector(preferredModelName: AppSettings.modelName)
+                detector = try BirdDetector(target: .forKind(settings.kind))
             } catch {
                 detectorFailed = true
                 let message = error.localizedDescription

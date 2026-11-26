@@ -4,9 +4,9 @@ import QuartzCore
 
 /// Shot sound and parking-sensor style aiming beeps, synthesised in code (no audio files).
 ///
-/// Uses the `.ambient` audio session category, which iOS mutes when the Ring/Silent switch
-/// (or Action-button silent mode) is on silent — so nothing is heard on a silenced phone —
-/// and which mixes with other audio instead of stopping it.
+/// Phone camera: the `.ambient` audio session category, which iOS mutes when the Ring/Silent
+/// switch (or Action-button silent mode) is on silent. Gun camera: `.playback`, which keeps
+/// sounding with the phone locked in a pocket (see `playsInBackground`). Both mix with other audio.
 final class SoundEngine: ObservableObject {
     private let engine = AVAudioEngine()
     private let shotPlayer = AVAudioPlayerNode()
@@ -42,12 +42,24 @@ final class SoundEngine: ObservableObject {
 
     // MARK: Control
 
+    /// Gun camera: keep sounding (and so keep the app running) in the background and play even
+    /// when the phone is on silent — with the phone in a pocket the beeps are the only aiming cue.
+    /// Phone camera: `.ambient`, which follows the silent switch.
+    var playsInBackground = false {
+        didSet { if active && oldValue != playsInBackground { configureSession() } }
+    }
+
+    private func configureSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(playsInBackground ? .playback : .ambient, mode: .default,
+                                 options: [.mixWithOthers])
+        try? session.setActive(true)
+    }
+
     func start() {
         guard !active else { return }
         active = true
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-        try? session.setActive(true)
+        configureSession()
         startEngineIfNeeded()
         timer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in self?.tick() }
         if let timer { RunLoop.main.add(timer, forMode: .common) }
@@ -71,6 +83,33 @@ final class SoundEngine: ObservableObject {
         startEngineIfNeeded()
         shotPlayer.scheduleBuffer(shotBuffer, at: nil, options: .interrupts)
         if !shotPlayer.isPlaying { shotPlayer.play() }
+    }
+
+    /// Result of a real shot, for when the screen is in a pocket: two rising chirps for a hit,
+    /// one low buzz for a miss.
+    func playResult(hit: Bool) {
+        guard active, let buffer = hit ? hitBuffer : missBuffer else { return }
+        startEngineIfNeeded()
+        shotPlayer.scheduleBuffer(buffer, at: nil, options: .interrupts)
+        if !shotPlayer.isPlaying { shotPlayer.play() }
+    }
+
+    private lazy var hitBuffer: AVAudioPCMBuffer? = makeChirps([1400, 2100], length: 0.09, gap: 0.06)
+    private lazy var missBuffer: AVAudioPCMBuffer? = makeChirps([330], length: 0.35, gap: 0)
+
+    private func makeChirps(_ frequencies: [Double], length: Double, gap: Double) -> AVAudioPCMBuffer? {
+        let total = Double(frequencies.count) * (length + gap)
+        guard let b = buffer(seconds: total), let data = b.floatChannelData?[0] else { return nil }
+        let n = Int(length * sampleRate), step = Int((length + gap) * sampleRate)
+        let ramp = Int(0.006 * sampleRate)
+        for i in 0..<Int(b.frameLength) { data[i] = 0 }
+        for (k, f) in frequencies.enumerated() {
+            for i in 0..<n where k * step + i < Int(b.frameLength) {
+                let envelope = Float(min(1, Double(min(i, n - 1 - i)) / Double(ramp)))
+                data[k * step + i] = 0.6 * envelope * Float(sin(2 * .pi * f * Double(i) / sampleRate))
+            }
+        }
+        return b
     }
 
     /// Beep rhythm for an aiming solution, like a car parking sensor: silent when far off,

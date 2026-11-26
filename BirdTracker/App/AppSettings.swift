@@ -12,9 +12,13 @@ enum AppSettings {
     static let highFrameRateKey = "highFrameRate"
     static let centreZoomKey = "centreZoom"
     static let cameraZoomKey = "cameraZoom"
+    static let userModeKey = "userMode"
+    static let clayTypeKey = "clayType"
 
     /// Name of the bundled Core ML model (without extension). Any yolo*.mlpackage also works.
     static let modelName = "yolo26n"
+    /// Clay-target detector trained by .github/workflows/train-clay.yml.
+    static let clayModelName = "ClayDetector"
 
     static func registerDefaults() {
         var defaults: [String: Any] = [
@@ -29,6 +33,8 @@ enum AppSettings {
             highFrameRateKey: true,
             centreZoomKey: true,
             cameraZoomKey: 1.0,
+            userModeKey: UserMode.hunter.rawValue,
+            clayTypeKey: ClayType.standard.rawValue,
         ]
         defaults.merge(gunCameraDefaults) { current, _ in current }
         UserDefaults.standard.register(defaults: defaults)

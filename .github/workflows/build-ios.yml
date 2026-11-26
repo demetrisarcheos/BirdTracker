@@ -6,11 +6,12 @@ name: Build iOS app
 on:
   push:
     branches: [main]
-    paths-ignore: ["training/**", "hardware/**", "docs/**", ".github/workflows/case-stl.yml"]
+    paths-ignore: ["training/**", "hardware/**", "docs/**", ".github/workflows/case-stl.yml",
+                   ".github/workflows/train-clay.yml"]
   workflow_dispatch:
-  # Rebuild after the species model has been retrained and committed.
+  # Rebuild after the species or clay model has been retrained and committed.
   workflow_run:
-    workflows: ["Train species model"]
+    workflows: ["Train species model", "Train clay model"]
     types: [completed]
 
 jobs:
@@ -42,6 +43,12 @@ jobs:
             echo "Species model included"
           else
             echo "::warning title=No species model::Run the 'Train species model' workflow; this build has no species recognition."
+          fi
+          if [ -d models/ClayDetector.mlpackage ]; then
+            cp -R models/ClayDetector.mlpackage BirdTracker/Models/
+            echo "Clay model included"
+          else
+            echo "::warning title=No clay model::Run the 'Train clay model' workflow; shooter mode has no detector in this build."
           fi
 
       - name: Export YOLO26 to Core ML
