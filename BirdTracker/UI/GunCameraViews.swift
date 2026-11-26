@@ -140,6 +140,13 @@ private struct GunCameraSetupContent: View {
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .listRowInsets(EdgeInsets())
                 LabeledContent("Status", value: gopro.status.text)
+                if let api = gopro.api {
+                    LabeledContent("Camera type", value: api.title)
+                } else if gopro.status == .searching {
+                    Text("The app looks for both new (HERO9+) and older (HERO5–HERO8) GoPros. If it never finds the camera, check iPhone Settings › Bird Tracker › Local Network is on.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 if gopro.status == .streaming {
                     LabeledContent("Video",
                                    value: "\(Int(gopro.resolution.width))×\(Int(gopro.resolution.height)) · \(Int(gopro.fps.rounded())) fps")
@@ -149,7 +156,7 @@ private struct GunCameraSetupContent: View {
             }
 
             Section {
-                Text("1. Switch the GoPro on (Preferences › Connections › Wireless Connections: on).\n" +
+                Text("1. Switch the GoPro on (Preferences › Connections › Wireless Connections: on; on a HERO7, also Connect Device › GoPro App).\n" +
                      "2. Tap the button below to switch on its Wi-Fi, or open the GoPro Quik app once.\n" +
                      "3. In iPhone Settings › Wi-Fi, join the GoPro's network, then come back.")
                     .font(.footnote)

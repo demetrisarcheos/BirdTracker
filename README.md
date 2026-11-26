@@ -176,8 +176,14 @@ HERO13 Black, Linear lens) on a barrel mount, and the gun's movement comes from 
 WT901BLECL** Bluetooth motion sensor strapped to the gun with its X arrow towards the muzzle. The
 phone's own sensors cannot be used because the phone no longer moves with the camera.
 
-- **Video:** the phone joins the GoPro's Wi-Fi. The app starts the Open GoPro preview stream (HTTP on
-  10.5.5.9:8080) and receives H.264 in MPEG-TS over UDP port 8554, decoded with VideoToolbox.
+- **Video:** the phone joins the GoPro's Wi-Fi. The app finds out which control API the camera speaks
+  and starts its preview stream:
+  - HERO9 and newer: Open GoPro, HTTP on 10.5.5.9:8080.
+  - HERO5–HERO8 (e.g. HERO7 Black): the older gpControl API, HTTP on 10.5.5.9:80, kept alive with a
+    UDP message to the camera's port 8554 every 2 s. The preview is lower resolution (about 480p),
+    so birds are detected at shorter range.
+
+  Both send H.264 in MPEG-TS over UDP port 8554, decoded with VideoToolbox.
   The button "Switch on GoPro Wi-Fi" uses the GoPro's Bluetooth link and shows the network name and
   password.
 - **Delay:** Wi-Fi video arrives about 200–300 ms late. Each frame is given the gun's orientation

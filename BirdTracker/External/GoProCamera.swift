@@ -7,10 +7,14 @@ import QuartzCore
 import UIKit
 import VideoToolbox
 
-/// Live video from a GoPro over the GoPro's own Wi-Fi network (Open GoPro API).
+/// Live video from a GoPro over the GoPro's own Wi-Fi network.
 ///
-/// The phone joins the GoPro's Wi-Fi. The app asks the camera (HTTP, 10.5.5.9:8080) to start its
-/// preview stream, which arrives as H.264 inside MPEG-TS over UDP port 8554 and is decoded with
+/// The phone joins the GoPro's Wi-Fi. Two camera control APIs are supported, found automatically:
+/// - **Open GoPro** (HERO9 and newer): HTTP on 10.5.5.9:8080, `/gopro/camera/stream/start`.
+/// - **Legacy gpControl** (HERO5–HERO8): HTTP on 10.5.5.9:80, `/gp/gpControl/execute?p1=gpStream…`,
+///   kept alive with a small UDP message to the camera's port 8554.
+///
+/// Either way the preview arrives as H.264 inside MPEG-TS over UDP port 8554 and is decoded with
 /// VideoToolbox into BGRA frames for the detector.
 final class GoProCamera: ObservableObject {
     enum Status: Equatable {
@@ -26,16 +30,29 @@ final class GoProCamera: ObservableObject {
         }
     }
 
+    enum API: Equatable {
+        case openGoPro, legacy
+
+        var title: String {
+            switch self {
+            case .openGoPro: return "Open GoPro (HERO9 or newer)"
+            case .legacy:    return "gpControl (HERO5–HERO8)"
+            }
+        }
+    }
+
     @Published private(set) var status: Status = .off
     @Published private(set) var fps: Double = 0
     @Published private(set) var resolution: CGSize = .zero
+    /// Which control API the camera answered on (nil until found).
+    @Published private(set) var api: API?
 
     /// Decoded frame and the host time (CACurrentMediaTime) it arrived.
     var onFrame: ((CVPixelBuffer, Double) -> Void)?
     /// Mean brightness (0…1) of the centre of each frame, with its arrival time (for the delay test).
     var onBrightness: ((Double, Double) -> Void)?
 
-    private let host = "10.5.5.9:8080"
+    private let cameraIP = "10.5.5.9"
     private let streamPort: UInt16 = 8554
     private let http: URLSession
     private let controlQueue = DispatchQueue(label: "gopro.control")
@@ -45,8 +62,10 @@ final class GoProCamera: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var lastPacket: Double = 0
     private var lastHTTPOK: Double = 0
+    private var lastStreamStart: Double = 0
+    private var foundAPI: API?
     private var configured = false
-    private var restarting = false
+    private var socketFD: Int32 = -1
     private var frameCount = 0
     private var rateStart: Double = 0
     private var _latest: CVPixelBuffer?
@@ -99,54 +118,132 @@ final class GoProCamera: ObservableObject {
         lock.unlock()
         timer?.cancel()
         timer = nil
-        get("/gopro/camera/stream/stop")
-        controlQueue.async { self.configured = false }
+        controlQueue.async {
+            switch self.foundAPI {
+            case .openGoPro: self.get(.openGoPro, "/gopro/camera/stream/stop")
+            case .legacy:    self.get(.legacy, "/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=stop")
+            case nil:        break
+            }
+            self.configured = false
+            self.foundAPI = nil
+            self.lastStreamStart = 0
+        }
         decoder.reset()
         publish(.off)
+        DispatchQueue.main.async { self.api = nil }
     }
 
     // MARK: - Camera control (HTTP)
 
-    private func get(_ path: String, completion: ((Bool) -> Void)? = nil) {
+    private func get(_ api: API, _ path: String, completion: ((Bool) -> Void)? = nil) {
+        let host = api == .openGoPro ? "\(cameraIP):8080" : cameraIP
         guard let url = URL(string: "http://\(host)\(path)") else { return }
         http.dataTask(with: URLRequest(url: url, timeoutInterval: 2)) { _, response, _ in
             completion?((response as? HTTPURLResponse)?.statusCode == 200)
         }.resume()
     }
 
+    /// Every 2 s: check the camera answers (trying both APIs until one does), keep the stream alive,
+    /// and (re)start it when no video is arriving.
     private func tick() {
-        get("/gopro/camera/keep_alive") { [weak self] ok in
-            self?.controlQueue.async { self?.afterKeepAlive(ok) }
+        switch foundAPI {
+        case .openGoPro:
+            get(.openGoPro, "/gopro/camera/keep_alive") { [weak self] ok in self?.answered(.openGoPro, ok) }
+        case .legacy:
+            sendLegacyKeepAlive()
+            get(.legacy, "/gp/gpControl/status") { [weak self] ok in self?.answered(.legacy, ok) }
+        case nil:
+            get(.openGoPro, "/gopro/camera/keep_alive") { [weak self] ok in
+                guard let self else { return }
+                if ok { self.answered(.openGoPro, true); return }
+                self.get(.legacy, "/gp/gpControl/status") { [weak self] ok in self?.answered(.legacy, ok) }
+            }
         }
     }
 
-    private func afterKeepAlive(_ ok: Bool) {
+    private func answered(_ api: API, _ ok: Bool) {
+        controlQueue.async { self.afterCheck(api, ok) }
+    }
+
+    private func afterCheck(_ api: API, _ ok: Bool) {
         let now = CACurrentMediaTime()
-        if ok { lastHTTPOK = now }
         lock.lock()
         let packetAge = now - lastPacket
         let isRunning = running
         lock.unlock()
         guard isRunning else { return }
 
-        if packetAge > 2.5, ok, !restarting {
+        if ok {
+            lastHTTPOK = now
+            if foundAPI != api {
+                foundAPI = api
+                configured = false
+                DispatchQueue.main.async { self.api = api }
+            }
+        }
+
+        // No video for 2.5 s: (re)start the stream, at most every 5 s so a slow start isn't cut off.
+        if ok, packetAge > 2.5, now - lastStreamStart > 5 {
+            lastStreamStart = now
             if !configured {
                 configured = true
-                // Linear lens (straight lines, no fisheye) and no stabilisation crop/warp.
-                get("/gopro/camera/presets/set_group?id=1000")
-                get("/gopro/camera/setting?setting=121&option=4")
-                get("/gopro/camera/setting?setting=135&option=0")
+                configure(api)
             }
-            restarting = true
-            get("/gopro/camera/stream/stop") { [weak self] _ in
-                self?.get("/gopro/camera/stream/start?port=8554") { _ in
-                    self?.controlQueue.async { self?.restarting = false }
-                }
-            }
+            startStream(api)
         }
 
         let status: Status = packetAge < 1.5 ? .streaming : (now - lastHTTPOK < 5 ? .waitingForVideo : .searching)
         publish(status)
+    }
+
+    /// Video mode, Linear lens (straight lines, no fisheye) and no stabilisation crop or warp.
+    /// A camera simply refuses settings it does not have.
+    private func configure(_ api: API) {
+        switch api {
+        case .openGoPro:
+            get(.openGoPro, "/gopro/camera/presets/set_group?id=1000")
+            get(.openGoPro, "/gopro/camera/setting?setting=121&option=4")
+            get(.openGoPro, "/gopro/camera/setting?setting=135&option=0")
+        case .legacy:
+            get(.legacy, "/gp/gpControl/command/mode?p=0")         // video mode
+            get(.legacy, "/gp/gpControl/setting/4/4")              // field of view: Linear
+            get(.legacy, "/gp/gpControl/setting/78/0")             // stabilisation off
+            get(.legacy, "/gp/gpControl/setting/62/2400000")       // highest preview bit rate
+        }
+    }
+
+    private func startStream(_ api: API) {
+        switch api {
+        case .openGoPro:
+            get(.openGoPro, "/gopro/camera/stream/stop") { [weak self] _ in
+                self?.get(.openGoPro, "/gopro/camera/stream/start?port=8554")
+            }
+        case .legacy:
+            get(.legacy, "/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=restart") { [weak self] _ in
+                self?.controlQueue.async { self?.sendLegacyKeepAlive() }
+            }
+        }
+    }
+
+    /// HERO5–8 stop streaming after a few seconds unless this message reaches the camera's port 8554.
+    /// It goes out from the receiving socket, so the camera keeps sending video to that same port.
+    private func sendLegacyKeepAlive() {
+        lock.lock(); let fd = socketFD; lock.unlock()
+        guard fd >= 0 else { return }
+        var addr = sockaddr_in()
+        addr.sin_len = __uint8_t(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(streamPort).bigEndian
+        addr.sin_addr.s_addr = inet_addr(cameraIP)
+        let message = Array("_GPHD_:0:0:2:0.000000\n".utf8)
+        _ = message.withUnsafeBytes { bytes in
+            withUnsafePointer(to: addr) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.sendto(fd, bytes.baseAddress, bytes.count, 0, $0,
+                                  socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
     }
 
     private func publish(_ status: Status) {
@@ -182,6 +279,7 @@ final class GoProCamera: ObservableObject {
             }
         }
         guard bound == 0 else { Darwin.close(fd); return }
+        lock.lock(); socketFD = fd; lock.unlock()
 
         let thread = Thread { [weak self] in self?.receiveLoop(fd, generation: gen) }
         thread.qualityOfService = .userInteractive
@@ -197,6 +295,7 @@ final class GoProCamera: ObservableObject {
             lock.lock(); lastPacket = CACurrentMediaTime(); lock.unlock()
             buffer.withUnsafeBufferPointer { demuxer.feed($0.baseAddress!, count: n) }
         }
+        lock.lock(); if socketFD == fd { socketFD = -1 }; lock.unlock()
         Darwin.close(fd)
     }
 
