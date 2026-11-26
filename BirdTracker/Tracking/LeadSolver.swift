@@ -6,7 +6,9 @@ import simd
 struct LeadSolution: Equatable {
     /// Aiming point in the upright image (normalised, origin top-left). The reticle is (0.5, 0.5).
     let aimPoint: CGPoint
-    /// Distance between the bird now and the aiming point, metres (includes pellet drop).
+    /// The part of the bird the shot is meant for (head, neck and chest), same image coordinates.
+    let targetPoint: CGPoint
+    /// Distance between the bird's target point now and the aiming point, metres (includes pellet drop).
     let leadMeters: Double
     /// Range to the meeting point (m) and the shot's travel time to it (s).
     let range: Double
@@ -51,7 +53,8 @@ struct LeadSolution: Equatable {
 ///
 /// 1. Shot travel time from the cartridge's ballistics table (pellet drag integrated numerically).
 /// 2. Meeting point = bird position + velocity · t, iterated because t depends on that distance;
-///    raised by the pellet drop ½ g t².
+///    raised by the pellet drop ½ g t². The bird's position here is its target point (head, neck
+///    and chest, see `MultiBirdTracker.vitalsOffset`), not the centre of its box.
 /// 3. The shot leaves along the camera's optical axis (the reticle). Its pellet cloud is treated as
 ///    a 2-D Gaussian whose σ grows with range according to the choke.
 /// 4. Expected pellets on the bird = pellet count × pattern density at the bird × presented area;
@@ -89,6 +92,10 @@ enum LeadSolver {
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
         let px = geometry.focalPx * a.x / a.z + w / 2
         let py = geometry.focalPx * a.y / a.z + h / 2
+        let tc = worldToCamera * p
+        let target = tc.z > 0.1
+            ? CGPoint(x: (geometry.focalPx * tc.x / tc.z + w / 2) / w, y: (geometry.focalPx * tc.y / tc.z + h / 2) / h)
+            : CGPoint(x: px / w, y: py / h)
 
         // Closest approach of the pattern centre (barrel axis) to the aiming point.
         let miss = simd_length(perp)
@@ -111,6 +118,7 @@ enum LeadSolver {
         let motion = simd_length(screen) > 0.3 ? simd_normalize(screen) : nil
 
         return LeadSolution(aimPoint: CGPoint(x: px / w, y: py / h),
+                            targetPoint: target,
                             leadMeters: simd_length(aimWorld - p),
                             range: range,
                             flightTime: t,

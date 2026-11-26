@@ -62,6 +62,12 @@ struct LeadMarkerView: View {
                 p.addLine(to: to)
             }
             .stroke(.red.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            // The part of the bird the shot is meant for (head, neck and chest).
+            Circle()
+                .fill(.yellow)
+                .overlay(Circle().stroke(.black.opacity(0.6), lineWidth: 1))
+                .frame(width: 7, height: 7)
+                .position(from)
             Circle()
                 .stroke(onTarget ? Color.green : Color.red, lineWidth: 2.5)
                 .background(Circle().stroke(.black.opacity(0.5), lineWidth: 4.5))

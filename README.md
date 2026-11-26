@@ -120,7 +120,14 @@ where a shot fired now would have to go, and what it would do (`Hunting/Ballisti
   (Cd 0.47 subsonic rising to 0.95 above the speed of sound), from the box speed corrected for
   barrel length (≈0.5 m/s per cm vs a 76 cm test barrel). This gives travel time, remaining speed
   and energy at any range (e.g. 32 g No.7½ at 400 m/s: ≈215 m/s and 1.8 J at 30 m).
-- **Meeting point** = bird position + velocity × travel time (iterated), raised by pellet drop.
+- **Target on the bird:** the head, neck and chest, not the middle of the box, which is mostly
+  wings and lower body. It is marked with a small yellow dot.
+  - Flying: moved from the centre about a third of the way to the box's front edge, in the
+    direction of flight (birds fly head first). The shift shrinks when the bird flies towards or
+    away from you, because its head is then near the centre.
+  - Perched: a quarter of the box height above the centre, whichever way the bird faces.
+  - The kill zone is centred on this point.
+- **Meeting point** = target point + velocity × travel time (iterated), raised by pellet drop.
 - **Pattern:** a Gaussian pellet cloud sized from the choke's standard 40-yard pattern percentage
   (Cyl 40 % … Full 70 % in a 76 cm circle; steel patterns tighter).
 - **Kill model:** expected pellets on the bird = pellet count × pattern density × the bird's

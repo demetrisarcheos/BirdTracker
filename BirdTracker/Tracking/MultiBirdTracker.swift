@@ -260,6 +260,37 @@ final class MultiBirdTracker {
         return slope * sign > 0 && abs(slope) > max(minRadialSpeed, 3 * slopeSE)
     }
 
+    /// Flying: how far the target moves from the box centre towards the front edge (birds fly head first).
+    static let headShift = 0.35
+    /// Perched: how far above the box centre the target sits, as a fraction of the box height
+    /// (the head, neck and upper chest are in the upper part whichever way the bird faces).
+    static let perchedRaise = 0.25
+
+    /// World-frame offset (m) from the box centre to the head/neck/chest target.
+    /// - Flying: along the bird's direction of motion on screen, scaled by how much of its motion is
+    ///   sideways (a bird flying straight at you or away shows its head near the centre).
+    /// - Perched: straight up.
+    /// - Motion not known yet: no offset.
+    static func vitalsOffset(rect: CGRect, distance: Double, motion: SIMD3<Double>, perched: Bool,
+                             known: Bool, geometry: CameraGeometry) -> SIMD3<Double> {
+        guard known, distance > 0, geometry.focalPx > 0 else { return .zero }
+        let metresPerPixel = distance / geometry.focalPx
+        let halfW = Double(rect.width * geometry.imageSize.width) / 2 * metresPerPixel
+        let halfH = Double(rect.height * geometry.imageSize.height) / 2 * metresPerPixel
+        if perched { return SIMD3(0, 0, perchedRaise * 2 * halfH) }
+
+        let speed = simd_length(motion)
+        guard speed > 0 else { return .zero }
+        let m = geometry.cameraToWorld.transpose * motion       // camera: x right, y down, z forward
+        let sideways = hypot(m.x, m.y)
+        guard sideways > 0.1 else { return .zero }
+        let dx = m.x / sideways, dy = m.y / sideways
+        let toEdge = min(abs(dx) > 1e-6 ? halfW / abs(dx) : .infinity,
+                         abs(dy) > 1e-6 ? halfH / abs(dy) : .infinity)
+        let shift = headShift * toEdge * min(1, sideways / speed)
+        return geometry.cameraToWorld * SIMD3(dx * shift, dy * shift, 0)
+    }
+
     private static func weightedMedian(_ items: [(size: Double, weight: Double)]) -> Double {
         let sorted = items.sorted { $0.size < $1.size }
         let half = sorted.reduce(0) { $0 + $1.weight } / 2
@@ -317,7 +348,10 @@ final class MultiBirdTracker {
         let wingspan = track.wingspanInUse ?? presetSize
         // Gun camera: the video arrives a little late, so move the bird to where it is now.
         let leadPosition = speed == nil ? p : p + motion * leadAhead
-        let lead = LeadSolver.solve(position: leadPosition, velocity: speed == nil ? nil : motion,
+        // Aim at the head, neck and chest rather than the middle of the box (wings and lower body).
+        let target = leadPosition + Self.vitalsOffset(rect: track.rect, distance: distance, motion: motion,
+                                                      perched: perched, known: speed != nil, geometry: geometry)
+        let lead = LeadSolver.solve(position: target, velocity: speed == nil ? nil : motion,
                                     geometry: leadGeometry ?? geometry,
                                     wingspan: wingspan, loadout: loadout)
 

@@ -79,9 +79,9 @@ struct ContentView: View {
                         .position(x: frame.midX, y: frame.midY)
                 }
                 if showLeadPoint, let bird = primary, let lead = bird.lead, lead.ready {
-                    let box = onScreen(bird.rect, in: geo.size)
+                    let target = onScreen(CGRect(origin: lead.targetPoint, size: .zero), in: geo.size).origin
                     let aim = onScreen(CGRect(origin: lead.aimPoint, size: .zero), in: geo.size).origin
-                    LeadMarkerView(from: CGPoint(x: box.midX, y: box.midY), to: aim, onTarget: lead.isHit)
+                    LeadMarkerView(from: target, to: aim, onTarget: lead.isHit)
                 }
                 // Aiming point: where the shot goes. Phone: the screen centre (= image centre, the optical
                 // axis). Gun camera: the barrel point found in the alignment step.
