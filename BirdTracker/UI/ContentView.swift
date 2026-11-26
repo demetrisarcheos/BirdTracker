@@ -20,7 +20,6 @@ struct ContentView: View {
     @AppStorage(GearStore.selectedCartridgeKey) private var selectedCartridgeID = ""
     /// Double guns fire barrel 1 then barrel 2; back to barrel 1 after a pause.
     @State private var nextBarrel = 1
-    @State private var loadoutSummary = ""
     @AppStorage(AppSettings.cameraUpsideDownKey) private var cameraUpsideDown = false
     @State private var pocketLocked = false
 
@@ -115,6 +114,12 @@ struct ContentView: View {
                                     in: RoundedRectangle(cornerRadius: 18))
                         .transition(.scale.combined(with: .opacity))
                 }
+                // Bird data appears above the Shoot button, so the button never moves.
+                if let bird = primary {
+                    HUDView(bird: bird, unit: unit, compassAvailable: engine.compassAvailable,
+                            speciesEnabled: identifySpecies && engine.speciesAvailable)
+                        .transition(.opacity)
+                }
                 ShootButton(lead: primary?.lead, action: { shoot() })
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .trailing) {
@@ -122,9 +127,6 @@ struct ContentView: View {
                             ZoomPicker(camera: engine.camera) { engine.setZoom($0) }
                         }
                     }
-                HUDView(bird: primary, unit: unit, compassAvailable: engine.compassAvailable,
-                        speciesEnabled: identifySpecies && engine.speciesAvailable,
-                        loadoutSummary: loadoutSummary)
             }
             .padding()
 
@@ -160,9 +162,7 @@ struct ContentView: View {
     }
 
     private func updateLoadout() {
-        let loadout = GearStore.loadout(barrel: nextBarrel)
-        engine.setLoadout(loadout)
-        loadoutSummary = "\(loadout.gun.title) · \(loadout.summary)"
+        engine.setLoadout(GearStore.loadout(barrel: nextBarrel))
     }
 
     private func resultColor(_ result: ShotResult) -> Color {

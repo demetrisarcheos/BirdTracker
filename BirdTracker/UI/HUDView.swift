@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Bottom panel with the big readouts for the primary bird.
+/// Panel above the Shoot button with the big readouts for the primary bird (shown only while
+/// a bird is detected).
 struct HUDView: View {
-    let bird: BirdReadout?
+    let bird: BirdReadout
     let unit: SpeedUnit
     let compassAvailable: Bool
     var speciesEnabled = true
-    var loadoutSummary = ""
 
     var body: some View {
         VStack(spacing: 10) {
-            if let bird {
+            Group {
                 speciesRow(bird)
                 HStack(alignment: .top, spacing: 8) {
                     metric("DISTANCE", Format.distance(bird.distance))
@@ -45,19 +45,6 @@ struct HUDView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 }
-            } else {
-                Text("Point the camera at a bird")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-            }
-            if !loadoutSummary.isEmpty {
-                Text(loadoutSummary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
             }
             if !compassAvailable {
                 Text("Compass unavailable — directions are relative to the start position.")
