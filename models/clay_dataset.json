@@ -1,7 +1,8 @@
 {
-  "backgrounds": 606,
+  "backgrounds": 605,
+  "negative_photos": 566,
   "train_images": 2400,
-  "train_boxes": 3535,
+  "train_boxes": 2885,
   "val_images": 300,
-  "val_boxes": 435
+  "val_boxes": 327
 }
