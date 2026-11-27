@@ -228,6 +228,12 @@ coming back from the background, and it can be changed in Settings › Mode.
 - **Distance:** from the clay's diameter (Settings › Clay type: standard 110 mm, midi 90, mini 60,
   battue 108, rabbit 110). The box's long side is the diameter whatever the clay's angle.
 - **Never perched.** Size jitter is set lower than for birds, which have wing beats.
+- **Only flying things count.** A detection is shown as a clay only once it moves faster than
+  3 m/s (about 11 km/h, measured in the world, so panning the phone does not count), and for 0.8 s
+  after it last did. Mugs, furniture and decorations never move, so they are never shown. A
+  clay therefore appears about 0.4 s after it is first seen.
+- **Shape check:** boxes taller than 1.5 × their width are dropped. A clay from any angle is round
+  or a flat ellipse; glasses, bottles, legs and people are tall.
 - **Aim:** always the clay's centre.
 - **Break model:**
   - Hit area: half the disc on average, since a clay is seen at an angle.
@@ -247,6 +253,10 @@ coming back from the background, and it can be changed in Settings › Mode.
      JPEG compression.
    - **Labels:** the box is the disc itself, without its blur streak, so box size stays tied to
      the diameter.
+   - **"Not a clay" examples:** a quarter of the images are household and clutter photos (rooms,
+     mugs, glasses, sofas, Christmas decorations, streets, people, shooters), mostly with no clay.
+     A third of the others get drawn decoys that are never labelled: balls, rings, plates, cups and
+     glowing lights.
 2. `training/clays/train_clay.py` fine-tunes YOLO26n (COCO weights) at 640 px and exports Core ML.
    The iOS build then runs and bundles the model.
 3. Validation is on synthetic images, so real-world accuracy will be lower. Adding real labelled

@@ -12,6 +12,10 @@ synthetic but realistic:
    and the background's lighting.
 3. The label box is the disc itself without its blur streak, which keeps the box size, and so
    the app's distance, tied to the clay's real diameter.
+4. "Not a clay" examples, added after the first model mistook mugs, wine glasses, couch legs and
+   Christmas decorations for clays: a quarter of the images are household and clutter photos
+   (mostly with no clay), and a third of the others get drawn decoys (balls, rings, plates, cups,
+   glowing lights) that are never labelled.
 
 Usage: python training/clays/build_clay_dataset.py [train_images] [val_images]
 """
@@ -44,6 +48,23 @@ QUERIES = [
     "pigeon flying", "gull flying sky", "crow flying",
 ]
 PER_QUERY = 45
+
+# "Not a clay" photos: everyday objects the first model mistook for clays (mugs, glasses, furniture,
+# Christmas decorations) and outdoor clutter around a shooting ground. Most are used with no clay
+# drawn on them, so the model learns to ignore round, bright or curved things that are not clays.
+NEGATIVE_QUERIES = [
+    "living room interior", "kitchen interior", "dining table set", "coffee mug", "wine glass",
+    "drinking glasses table", "sofa living room", "chair legs", "bookshelf room", "office interior",
+    "Christmas tree decorations", "Christmas ornaments", "Christmas lights room", "lamp interior",
+    "cafe interior people", "people walking street", "street traffic cars", "house garden",
+    "playground", "tennis balls", "football ball grass", "plates on table", "oranges fruit",
+    "street lights night", "power lines sky", "airplane in sky", "clay pigeon shooting shooter",
+    "hunter with shotgun", "dog in field", "car dashboard",
+]
+NEGATIVE_PER_QUERY = 25
+NEGATIVE_SHARE = 0.25          # share of images taken from the "not a clay" photos
+NEGATIVE_WITH_CLAY = 0.3       # of those, how many still get a clay (clays seen in front of clutter)
+DECOY_SHARE = 0.35             # share of the other images that get drawn round decoys (balls, rings…)
 
 # Real clay colours (RGB): mostly fluorescent orange or black, some white, yellow, green, pink.
 COLOURS = [((255, 96, 20), 30), ((245, 120, 30), 14), ((25, 25, 25), 22), ((240, 235, 225), 6),
@@ -78,13 +99,14 @@ def strip_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
-def fetch_backgrounds():
-    """Downloads free-licence photos from Wikimedia Commons. Returns a list of PIL images."""
-    images, credits, seen = [], [], set()
-    for q in QUERIES:
+def fetch_backgrounds(queries, per_query, credits, seen):
+    """Downloads free-licence photos from Wikimedia Commons. Returns a list of PIL images and adds
+    their authors and licences to `credits`."""
+    images = []
+    for q in queries:
         params = {
             "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
-            "gsrsearch": f"{q} filetype:bitmap", "gsrlimit": PER_QUERY, "prop": "imageinfo",
+            "gsrsearch": f"{q} filetype:bitmap", "gsrlimit": per_query, "prop": "imageinfo",
             "iiprop": "url|mime|size|extmetadata", "iiurlwidth": 1280,
         }
         data = http_json("https://commons.wikimedia.org/w/api.php?" + urllib.parse.urlencode(params))
@@ -116,12 +138,15 @@ def fetch_backgrounds():
             got += 1
             time.sleep(0.2)
         print(f"{q}: {got} photos")
+    return images
+
+
+def write_credits(credits):
     CREDITS.parent.mkdir(parents=True, exist_ok=True)
     with CREDITS.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["file", "author", "licence", "source"])
         w.writerows(credits)
-    return images
 
 
 def procedural_sky(rng):
@@ -140,8 +165,8 @@ def procedural_sky(rng):
     return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
 
 
-def background_crop(backgrounds, rng):
-    if not backgrounds or rng.random() < 0.08:
+def background_crop(backgrounds, rng, allow_sky=True):
+    if not backgrounds or (allow_sky and rng.random() < 0.08):
         return procedural_sky(rng)
     img = backgrounds[rng.integers(len(backgrounds))]
     scale = SIZE / min(img.size) * rng.uniform(1.0, 1.8)
@@ -240,6 +265,73 @@ def place_clays(img, rng):
     return img, labels
 
 
+def render_decoy(size, rng, light):
+    """RGBA patch of something round that is NOT a clay: a ball (always a full circle, shaded like
+    a sphere), a ring or bauble outline, a plate (pale with a thin rim), a cup or glass seen from the
+    side (taller than wide), or a soft glowing light."""
+    ss = 4
+    d = size * ss
+    pad = int(d * 0.2) + 4
+    W = H = int(d + 2 * pad)
+    patch = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(patch)
+    cx, cy = W / 2, H / 2
+    kind = rng.choice(["ball", "ring", "plate", "cup", "glow"], p=[0.35, 0.15, 0.15, 0.2, 0.15])
+    colour = np.array([rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255)]) * light
+    if kind == "ball":
+        # Radial shading from a highlight towards a dark edge: a sphere, never a flat disc.
+        steps = 14
+        hx, hy = rng.uniform(-0.25, 0.25) * d, rng.uniform(-0.3, 0.0) * d
+        for i in range(steps):
+            f = 1 - i / steps
+            r = d / 2 * f
+            shade = np.clip(colour * (0.45 + 0.75 * (1 - f)) + 40 * (1 - f) ** 3, 0, 255)
+            ox, oy = hx * (1 - f), hy * (1 - f)
+            draw.ellipse((cx + ox - r, cy + oy - r, cx + ox + r, cy + oy + r),
+                         fill=tuple(int(v) for v in shade) + (255,))
+    elif kind == "ring":
+        width = max(ss, int(d * rng.uniform(0.04, 0.12)))
+        draw.ellipse((cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2),
+                     outline=tuple(int(v) for v in colour) + (255,), width=width)
+    elif kind == "plate":
+        minor = d * rng.uniform(0.3, 1.0)
+        pale = np.clip(np.array([235, 232, 225]) * light, 0, 255)
+        draw.ellipse((cx - d / 2, cy - minor / 2, cx + d / 2, cy + minor / 2),
+                     fill=tuple(int(v) for v in pale) + (255,),
+                     outline=tuple(int(v) for v in colour) + (255,), width=max(ss, int(d * 0.03)))
+    elif kind == "cup":
+        cw = d * rng.uniform(0.45, 0.65)
+        alpha = 255 if rng.random() < 0.6 else 110            # mug, or a see-through glass
+        draw.rectangle((cx - cw / 2, cy - d / 2 + cw * 0.15, cx + cw / 2, cy + d / 2),
+                       fill=tuple(int(v) for v in colour) + (alpha,))
+        draw.ellipse((cx - cw / 2, cy - d / 2, cx + cw / 2, cy - d / 2 + cw * 0.3),
+                     fill=tuple(int(v * 0.7) for v in colour) + (alpha,))
+    else:  # glow
+        for i in range(10):
+            r = d / 2 * (1 - i / 10)
+            a = int(25 + 23 * i)
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r),
+                         fill=(255, int(220 + 3 * i), int(150 + 10 * i), min(255, a)))
+    patch = patch.rotate(rng.uniform(-25, 25), resample=Image.BICUBIC, expand=False)
+    return patch.resize((max(3, W // ss), max(3, H // ss)), Image.LANCZOS)
+
+
+def place_decoys(img, rng, avoid):
+    for _ in range(rng.choice([1, 1, 2, 3])):
+        size = math.exp(rng.uniform(math.log(6), math.log(120)))
+        light = rng.uniform(0.6, 1.1)
+        patch = render_decoy(size, rng, light)
+        if rng.random() < 0.3:
+            patch = patch.filter(ImageFilter.GaussianBlur(rng.uniform(0.3, 1.5)))
+        x = int(rng.uniform(0, SIZE - patch.width))
+        y = int(rng.uniform(0, SIZE - patch.height))
+        box = (x, y, x + patch.width, y + patch.height)
+        if any(iou(box, other) > 0.0 for other in avoid):
+            continue                                   # never cover a labelled clay
+        img.paste(patch, (x, y), patch)
+    return img
+
+
 def iou(a, b):
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -262,15 +354,23 @@ def finish(img, rng):
     return Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
 
 
-def write_split(name, count, backgrounds, rng):
+def write_split(name, count, backgrounds, negatives, rng):
     (OUT / "images" / name).mkdir(parents=True, exist_ok=True)
     (OUT / "labels" / name).mkdir(parents=True, exist_ok=True)
     boxes = 0
     for i in range(count):
-        img = background_crop(backgrounds, rng)
         labels = []
-        if rng.random() > 0.12:                       # 12 % of images have no clay at all
-            img, labels = place_clays(img, rng)
+        if negatives and rng.random() < NEGATIVE_SHARE:
+            # Household / clutter photo: mostly no clay at all.
+            img = background_crop(negatives, rng, allow_sky=False)
+            if rng.random() < NEGATIVE_WITH_CLAY:
+                img, labels = place_clays(img, rng)
+        else:
+            img = background_crop(backgrounds, rng)
+            if rng.random() > 0.12:                   # 12 % of sky images have no clay at all
+                img, labels = place_clays(img, rng)
+            if rng.random() < DECOY_SHARE:
+                img = place_decoys(img, rng, labels)
         img = finish(img, rng)
         img.save(OUT / "images" / name / f"{i:05d}.jpg", quality=92)
         with open(OUT / "labels" / name / f"{i:05d}.txt", "w") as f:
@@ -286,15 +386,21 @@ def main():
     n_train = int(sys.argv[1]) if len(sys.argv) > 1 else 2400
     n_val = int(sys.argv[2]) if len(sys.argv) > 2 else 300
     rng = np.random.default_rng(7)
-    backgrounds = fetch_backgrounds()
-    print(f"{len(backgrounds)} background photos")
+    credits, seen = [], set()
+    backgrounds = fetch_backgrounds(QUERIES, PER_QUERY, credits, seen)
+    negatives = fetch_backgrounds(NEGATIVE_QUERIES, NEGATIVE_PER_QUERY, credits, seen)
+    write_credits(credits)
+    print(f"{len(backgrounds)} background photos, {len(negatives)} 'not a clay' photos")
     random.Random(7).shuffle(backgrounds)
+    random.Random(8).shuffle(negatives)
     cut = max(1, len(backgrounds) // 8)
+    ncut = max(1, len(negatives) // 8) if negatives else 0
     val_bg, train_bg = backgrounds[:cut], backgrounds[cut:]     # val uses unseen photos
+    val_neg, train_neg = negatives[:ncut], negatives[ncut:]
     stats = {
-        "backgrounds": len(backgrounds),
-        "train_images": n_train, "train_boxes": write_split("train", n_train, train_bg, rng),
-        "val_images": n_val, "val_boxes": write_split("val", n_val, val_bg, rng),
+        "backgrounds": len(backgrounds), "negative_photos": len(negatives),
+        "train_images": n_train, "train_boxes": write_split("train", n_train, train_bg, train_neg, rng),
+        "val_images": n_val, "val_boxes": write_split("val", n_val, val_bg, val_neg, rng),
     }
     (OUT / "data.yaml").write_text(f"path: {OUT}\ntrain: images/train\nval: images/val\nnames:\n  0: clay\n")
     Path("models").mkdir(exist_ok=True)

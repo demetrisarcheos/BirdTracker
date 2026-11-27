@@ -53,6 +53,9 @@ final class MultiBirdTracker {
         var wingspanInUse: Double?
         var lastClassified = -Double.infinity
         var speciesHistory: [[String: Float]] = []
+        /// Clays: last time the track was clearly flying (−∞ = never). Things that never move —
+        /// mugs, furniture, decorations — are never shown as clays.
+        var lastFlying = -Double.infinity
 
         init(id: Int, rect: CGRect, confidence: Float, time: Double) {
             self.id = id
@@ -89,6 +92,15 @@ final class MultiBirdTracker {
     var minLateralSpeed = 0.8
     static let minRadialSpeed = 3.0
 
+    /// Clays only: a thrown clay always flies, so a track is shown only once it moves faster than this
+    /// (m/s, ~11 km/h; real clays fly at 50–100 km/h and stay well above it even at the top of the arc)…
+    var clayMinSpeed = 3.0
+    /// …and keeps being shown for this long after it last did (s), so a slow apex does not drop it.
+    var clayFlyingHold = 0.8
+    /// Clays only: boxes taller than this × their width are rejected. A clay seen from any angle is
+    /// round or a flat ellipse; tall shapes (glasses, bottles, chair and couch legs, people) are not clays.
+    var clayMaxAspect = 1.5
+
     var classifyInterval = 0.2      // s between species classifications of one bird (~5/s)
     var minClassifySizePx = 32.0    // smaller birds are too blurry to identify
     var speciesHistoryLength = 6     // ~1.2 s of guesses averaged
@@ -105,6 +117,13 @@ final class MultiBirdTracker {
                 loadout: Loadout = .default,
                 leadGeometry: CameraGeometry? = nil, leadAhead: Double = 0) -> [BirdReadout] {
         let w = Double(geometry.imageSize.width), h = Double(geometry.imageSize.height)
+
+        var detections = detections
+        if targetKind == .clay {
+            detections.removeAll { d in
+                Double(d.rect.height) * h > clayMaxAspect * Double(d.rect.width) * w
+            }
+        }
 
         // Greedy association by centre distance (in pixels), gated by box size.
         var candidates: [(track: Int, det: Int, cost: Double)] = []
@@ -152,8 +171,14 @@ final class MultiBirdTracker {
                   leadAhead: Double, presetSize: Double, loadout: Loadout) -> [BirdReadout] {
         tracks
             .filter { $0.hits >= 3 && time - $0.lastSeen < 0.25 && $0.filter.isInitialized }
-            .map { readout(for: $0, time: time, presetSize: presetSize, geometry: geometry,
-                           leadGeometry: leadGeometry, leadAhead: leadAhead, loadout: loadout) }
+            .map { ($0, readout(for: $0, time: time, presetSize: presetSize, geometry: geometry,
+                                leadGeometry: leadGeometry, leadAhead: leadAhead, loadout: loadout)) }
+            .filter { pair in
+                guard targetKind == .clay else { return true }
+                if let speed = pair.1.speed, speed >= clayMinSpeed { pair.0.lastFlying = time }
+                return time - pair.0.lastFlying <= clayFlyingHold
+            }
+            .map { $0.1 }
     }
 
     // MARK: - Species

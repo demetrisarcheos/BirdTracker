@@ -55,7 +55,7 @@ jobs:
           import json
           r = json.load(open("models/clay_report.json"))
           d = json.load(open("models/clay_dataset.json"))
-          print(f"::notice title=Clay model::mAP50 {r['mAP50_pct']}%, precision {r['precision_pct']}%, recall {r['recall_pct']}% on synthetic validation images. Backgrounds {d['backgrounds']}, train {d['train_images']} images / {d['train_boxes']} clays.")
+          print(f"::notice title=Clay model::mAP50 {r['mAP50_pct']}%, precision {r['precision_pct']}%, recall {r['recall_pct']}% on synthetic validation images. Backgrounds {d['backgrounds']}, not-a-clay photos {d.get('negative_photos', 0)}, train {d['train_images']} images / {d['train_boxes']} clays.")
           EOF
 
       - name: Commit model

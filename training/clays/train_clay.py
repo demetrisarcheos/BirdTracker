@@ -14,7 +14,7 @@ from ultralytics import YOLO
 epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 30
 hours = float(sys.argv[2]) if len(sys.argv) > 2 else 4.0
 
-model = YOLO("yolo26n.pt")
+model = YOLO("yolo26n.pt")      # COCO weights; the clay detector is retrained from these each time
 model.train(
     data="/tmp/clays/data.yaml",
     epochs=epochs,
@@ -50,6 +50,7 @@ shutil.copytree(exported, dest)
 
 report = {
     "base_model": "yolo26n.pt",
+    "negatives": "household/clutter photos and drawn decoys (balls, rings, plates, cups, lights)",
     "epochs_requested": epochs,
     "mAP50_pct": round(float(metrics.box.map50) * 100, 1),
     "mAP50_95_pct": round(float(metrics.box.map) * 100, 1),
